@@ -5,17 +5,19 @@ Plain HTML + canvas + JS. No build step, no CDN, no network calls: everything is
 It keeps the idea and the "rules are pure, renderer is separate" architecture of `../mis-aligned-mvp.html`
 (that file is untouched).
 
-## Run it
+## Play
+https://sbean0.github.io/misaligned-game/
+
+## Run it locally
 ```
-cd mobile
-python3 -m http.server 8765        # any static server works
-# open  http://<this-machine-ip>:8765/index.html  on the phone (same Wi-Fi), or http://127.0.0.1:8765 locally
+python3 -m http.server 8765
+# open http://127.0.0.1:8765/
 ```
-Nothing here is deployed or exposed to the internet. Opening `index.html` straight from disk (file://) also works
+Opening `index.html` straight from disk (file://) also works
 for everything except decoding the music with WebAudio (browsers block `fetch` of local files); the game then falls back
 to a plain `<audio>` element automatically.
 Debug: `?novideo=1` skips the title video.
-Cache busting: `index.html` loads the scripts as `js/*.js?v=6` - bump the number when you change JS so phones do not keep the old files.
+Cache busting: `index.html` loads the scripts as `js/*.js?v=11` - bump the number when you change JS so phones do not keep the old files.
 
 ## How to play (this is also the in-game tutorial)
 | | |
