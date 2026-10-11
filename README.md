@@ -5,6 +5,19 @@ Plain HTML + canvas + JS. No build step, no CDN, no network calls: everything is
 It keeps the idea and the "rules are pure, renderer is separate" architecture of `../mis-aligned-mvp.html`
 (that file is untouched).
 
+## Notice
+
+Anyone may play the game at https://sbcafe.github.io/misaligned-game/.
+Anyone may read the code.
+
+The code, the song (`assets/stomp-signal.mp3`), the title video (`assets/title.mp4`, `assets/title.webm`), and the poster (`assets/poster.jpg`) are all rights reserved. © SMARTBEAN.
+
+The fonts Orbitron and Space Mono are under the SIL Open Font License. See `assets/OFL-Orbitron.txt` and `assets/OFL-SpaceMono.txt`.
+
+Smartbean, MISALIGNED, and the Cafe name are not licensed for use on other products.
+
+Bug reports are welcome as GitHub issues. This prototype is not taking pull requests.
+
 ## Play
 https://sbcafe.github.io/misaligned-game/
 
