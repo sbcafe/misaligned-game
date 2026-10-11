@@ -6,7 +6,7 @@ It keeps the idea and the "rules are pure, renderer is separate" architecture of
 (that file is untouched).
 
 ## Play
-https://sbean0.github.io/misaligned-game/
+https://sbcafe.github.io/misaligned-game/
 
 ## Run it locally
 ```
