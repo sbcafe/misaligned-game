@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#07010f">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<title>MISALIGNED</title>
+<style>
+@font-face { font-family: "MIS Display Black"; src: url("assets/orbitron-900.woff2") format("woff2"); font-weight: 900; font-display: block; }
+@font-face { font-family: "MIS Display Bold"; src: url("assets/orbitron-700.woff2") format("woff2"); font-weight: 700; font-display: block; }
+@font-face { font-family: "MIS Mono"; src: url("assets/spacemono-400.woff2") format("woff2"); font-weight: 400; font-display: block; }
+@font-face { font-family: "MIS Mono"; src: url("assets/spacemono-700.woff2") format("woff2"); font-weight: 700; font-display: block; }
+:root { --cyan:#6af6ff; --mag:#ff3fd6; --ink:#f4e9ff; --dim:#8d7aaa; --bg:#07010f; --lime:#d6ff74; color-scheme: dark; }
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; width: 100%; overflow: hidden; background: var(--bg); color: var(--ink);
+  font-family: "MIS Mono", ui-monospace, Menlo, Consolas, monospace; overscroll-behavior: none; touch-action: none;
+  -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color: transparent; -webkit-touch-callout: none; }
+#insetProbe { position: fixed; left: 0; top: 0; width: 0; height: 0; visibility: hidden; pointer-events: none;
+  padding: env(safe-area-inset-top, 0px) env(safe-area-inset-right, 0px) env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px); }
+canvas#stage { position: fixed; left: 0; top: 0; touch-action: none; display: block; }
+.screen { position: fixed; inset: 0; display: none; flex-direction: column; align-items: center; justify-content: center; gap: 14px;
+  padding: calc(env(safe-area-inset-top, 0px) + 16px) calc(env(safe-area-inset-right, 0px) + 18px) calc(env(safe-area-inset-bottom, 0px) + 16px) calc(env(safe-area-inset-left, 0px) + 18px);
+  text-align: center; opacity: 0; transition: opacity .35s ease; }
+.screen.on { display: flex; }
+.screen.show { opacity: 1; }
+.scroll { overflow-y: auto; overscroll-behavior: contain; touch-action: pan-y; -webkit-overflow-scrolling: touch; justify-content: flex-start; }
+.scroll > .col { margin: auto 0; }
+.col { width: min(100%, 520px); display: flex; flex-direction: column; gap: 12px; align-items: stretch; }
+h1, h2 { font-family: "MIS Display Black", "Arial Black", sans-serif; font-weight: 900; margin: 0; letter-spacing: .04em; text-transform: uppercase; }
+h2 { font-size: clamp(20px, 6vw, 30px); color: var(--cyan); text-shadow: 0 0 12px var(--cyan); }
+p { margin: 0; line-height: 1.45; font-size: clamp(14px, 3.9vw, 17px); }
+.btn { appearance: none; -webkit-appearance: none; font: 700 clamp(16px, 4.6vw, 20px)/1.1 "MIS Mono", monospace; letter-spacing: .08em; text-transform: uppercase;
+  color: var(--ink); background: rgba(14, 4, 40, .82); border: 2px solid var(--cyan); border-radius: 12px; min-height: 56px; min-width: 56px; padding: 12px 20px;
+  box-shadow: 0 0 14px rgba(106,246,255,.35), inset 0 0 12px rgba(106,246,255,.12); cursor: pointer; touch-action: manipulation; }
+.btn:active, .btn.pressed { transform: scale(.98); background: rgba(40, 12, 90, .95); }
+.btn.primary { border-color: var(--mag); box-shadow: 0 0 18px rgba(255,63,214,.5), inset 0 0 14px rgba(255,63,214,.18); color: #fff; }
+.btn.small { min-height: 48px; font-size: 15px; padding: 8px 14px; }
+.btn.on { border-color: var(--lime); color: var(--lime); }
+.card { background: rgba(8, 3, 28, .86); border: 1.5px solid rgba(106,246,255,.5); border-radius: 12px; padding: 14px 16px; text-align: left; }
+.card ol { margin: 8px 0 0; padding-left: 0; list-style: none; display: flex; flex-direction: column; gap: 10px; }
+.card li { display: grid; grid-template-columns: 28px 1fr; gap: 8px; font-size: clamp(13px, 3.7vw, 16px); line-height: 1.4; }
+.card li b.n { color: var(--mag); font-family: "MIS Display Black", sans-serif; }
+.hnote { margin: 10px 0 0; font-size: 13px; line-height: 1.4; color: #b9a6d6; }
+.hl { color: var(--lime); } .hc { color: var(--cyan); } .hm { color: #ff7ce9; }
+.row { display: flex; gap: 10px; align-items: center; justify-content: space-between; }
+.row > label, .row > span { font-size: clamp(13px, 3.8vw, 16px); }
+.stack { display: flex; flex-direction: column; gap: 10px; width: 100%; }
+.kv { display: grid; grid-template-columns: 1fr auto; gap: 4px 12px; font-size: clamp(13px, 3.8vw, 16px); }
+.kv b { color: var(--cyan); text-align: right; }
+.foot { font-size: 11px; color: var(--dim); letter-spacing: .12em; text-transform: uppercase; }
+.blink { animation: blink 1.1s steps(2, start) infinite; }
+@keyframes blink { 50% { opacity: .25; } }
+body.rm .blink { animation: none; }
+input[type=range] { -webkit-appearance: none; appearance: none; width: 100%; height: 48px; background: transparent; touch-action: pan-x; }
+input[type=range]::-webkit-slider-runnable-track { height: 10px; border-radius: 6px; background: linear-gradient(90deg, #30e0ff, #ff3fd6); }
+input[type=range]::-moz-range-track { height: 10px; border-radius: 6px; background: linear-gradient(90deg, #30e0ff, #ff3fd6); }
+input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 34px; height: 44px; margin-top: -17px; border-radius: 10px; background: linear-gradient(#9af6ff, #2f8cff 50%, #ff6fe0 52%, #ff9a3c); border: 2px solid #fff; }
+input[type=range]::-moz-range-thumb { width: 30px; height: 40px; border-radius: 10px; background: #2f8cff; border: 2px solid #fff; }
+/* boot / start */
+#screen-boot { justify-content: flex-end; padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 12vh); cursor: pointer; }
+#bootTap { appearance: none; background: none; border: 0; color: var(--ink); font: 700 clamp(18px, 5.4vw, 26px) "MIS Mono", monospace; letter-spacing: .2em; min-height: 64px; min-width: 64px; text-shadow: 0 0 12px var(--cyan); }
+#screen-boot .tag { position: absolute; left: 0; right: 0; bottom: calc(env(safe-area-inset-bottom, 0px) + 14px); }
+/* title video */
+#screen-video { background: #07010f; padding: 0; justify-content: center; }
+#titleVideo { width: 100%; max-height: 100%; object-fit: contain; background: #07010f; }
+#skipBtn { position: absolute; right: calc(env(safe-area-inset-right, 0px) + 14px); bottom: calc(env(safe-area-inset-bottom, 0px) + 18px); z-index: 3; }
+/* hud buttons */
+#hudBtns { position: fixed; z-index: 5; right: calc(env(safe-area-inset-right, 0px) + 10px); top: calc(env(safe-area-inset-top, 0px) + 6px); display: none; gap: 8px; pointer-events: none; }
+#hudBtns.on { display: flex; }
+#hudBtns .btn { pointer-events: auto; width: 52px; min-height: 52px; height: 52px; padding: 0; display: grid; place-items: center; }
+#hudBtns svg { width: 24px; height: 24px; fill: currentColor; }
+#hudBtns { gap: 6px; } #hudBtns .btn { width: 48px; min-height: 48px; height: 48px; }
+/* result */
+.grade { font: 900 clamp(80px, 26vw, 140px)/1 "MIS Display Black", sans-serif; color: #fff; text-shadow: 0 0 22px var(--mag), 0 0 4px var(--cyan); }
+.big { font: 900 clamp(22px, 7vw, 34px)/1.15 "MIS Display Black", sans-serif; text-transform: uppercase; }
+.zs { color: var(--lime); text-shadow: 0 0 14px var(--lime); }
+.nz { color: #ff7ce9; text-shadow: 0 0 14px var(--mag); }
+/* credits */
+#screen-credits { padding: 0; justify-content: flex-start; background: rgba(5,0,18,.55); }
+#creditsFrame { width: 100%; max-height: 34%; object-fit: contain; display: block; margin-top: env(safe-area-inset-top, 0px); box-shadow: 0 8px 30px rgba(255,63,214,.3); background: #000; flex: none; }
+#creditsView { position: relative; flex: 1 1 auto; width: 100%; overflow: hidden; -webkit-mask-image: linear-gradient(transparent 0, #000 8%, #000 90%, transparent 100%); mask-image: linear-gradient(transparent 0, #000 8%, #000 90%, transparent 100%); }
+#creditsList { position: absolute; left: 0; right: 0; top: 0; padding: 0 20px; display: flex; flex-direction: column; gap: 20px; align-items: center; animation: roll 26s linear forwards; }
+body.rm #creditsList { animation: none; position: static; padding-top: 16px; }
+body.rm #creditsView { overflow-y: auto; touch-action: pan-y; overscroll-behavior: contain; }
+@keyframes roll { from { transform: translateY(var(--vh, 300px)); } to { transform: translateY(-100%); } }
+#creditsList h1 { font-size: clamp(34px, 11vw, 60px); background: linear-gradient(#fff, #96f5ff 40%, #288cff 48%, #ff8ceb 52%, #ff3cb9 75%, #ff963c); -webkit-background-clip: text; background-clip: text; color: transparent; filter: drop-shadow(0 0 10px var(--mag)); transform: skewX(-12deg); }
+#creditsList .cl { font-size: clamp(14px, 4vw, 18px); letter-spacing: .1em; text-transform: uppercase; }
+#creditsList .cl small { display: block; color: var(--dim); font-size: .72em; letter-spacing: .2em; margin-bottom: 4px; }
+#creditsBtns { flex: none; display: flex; gap: 10px; justify-content: center; padding: 10px 16px calc(env(safe-area-inset-bottom, 0px) + 12px); width: 100%; }
+
+/* tilt arrows (left + right pair, same function) */
+.arrow { position: fixed; z-index: 6; display: none; width: 64px; height: 64px; padding: 0; border-radius: 18px; place-items: center; color: var(--cyan);
+  background: rgba(14, 4, 40, .38); border: 2px solid rgba(106, 246, 255, .55); box-shadow: 0 0 14px rgba(106, 246, 255, .25), inset 0 0 14px rgba(106, 246, 255, .10);
+  touch-action: none; -webkit-user-select: none; user-select: none; cursor: pointer; transition: background .06s, transform .06s; }
+.arrow.on { display: grid; }
+.arrow svg { width: 34px; height: 34px; filter: drop-shadow(0 0 6px currentColor); pointer-events: none; }
+.arrow.down svg { transform: rotate(180deg); }
+.arrow.pressed { background: rgba(255, 63, 214, .42); border-color: var(--mag); color: #fff; transform: scale(.93); box-shadow: 0 0 22px rgba(255, 63, 214, .7), inset 0 0 16px rgba(255, 63, 214, .35); }
+.arrow.rev { color: #ff7ce9; border-color: rgba(255, 124, 233, .6); }
+.arrow.dim { opacity: .35; }
+body.arrows-off .arrow { display: none !important; }
+/* floating ESC while the grid is frozen */
+/* TILT LOCK: transparent generous hit zone over the tilt gauge (the marker moves inside it) */
+#lockBtn { position: fixed; z-index: 6; display: none; padding: 0; margin: 0; border: 0; background: transparent; touch-action: none; -webkit-tap-highlight-color: transparent; cursor: pointer; }
+#lockBtn.on { display: block; }
+#escBtn { position: fixed; z-index: 7; display: none; min-width: 132px; height: 64px; padding: 0 26px; border-radius: 16px; font: 900 26px/1 "MIS Display Black", sans-serif; letter-spacing: .12em; color: #fff;
+  background: rgba(10, 30, 60, .78); border: 2.5px solid #9afcff; box-shadow: 0 0 22px rgba(154, 252, 255, .75), inset 0 0 16px rgba(154, 252, 255, .3); text-shadow: 0 0 10px #6af6ff;
+  touch-action: none; animation: escPulse 1s ease-in-out infinite; }
+#escBtn.on { display: block; }
+#escBtn small { display: block; font: 700 10px/1.2 "MIS Mono", monospace; letter-spacing: .1em; margin-top: 4px; color: #9afcff; text-shadow: none; }
+#fireBtn { position: fixed; z-index: 7; display: none; min-width: 132px; height: 64px; padding: 0 26px; border-radius: 16px; font: 900 26px/1 "MIS Display Black", sans-serif; letter-spacing: .12em; color: #fff;
+  background: rgba(60, 8, 50, .78); border: 2.5px solid #ff3fd6; box-shadow: 0 0 22px rgba(255, 63, 214, .75), inset 0 0 16px rgba(255, 63, 214, .3); text-shadow: 0 0 10px #ff3fd6;
+  touch-action: none; animation: escPulse 1s ease-in-out infinite; }
+#fireBtn.on { display: block; } #fireBtn.dim { opacity: .45; animation: none; }
+#fireBtn small { display: block; font: 700 10px/1.2 "MIS Mono", monospace; letter-spacing: .1em; margin-top: 4px; color: #ff9bea; text-shadow: none; }
+#fireBtn.pressed { transform: scale(.94); background: rgba(140, 20, 110, .9); }
+body.rm #fireBtn { animation: none; }
+#escBtn:active { transform: scale(.95); background: rgba(40, 90, 140, .9); }
+@keyframes escPulse { 50% { transform: scale(1.06); box-shadow: 0 0 34px rgba(154, 252, 255, 1), inset 0 0 20px rgba(154, 252, 255, .5); } }
+body.rm #escBtn { animation: none; }
+#calibPad { min-height: 130px; border: 2px dashed var(--mag); border-radius: 14px; display: grid; place-items: center; font-weight: 700; letter-spacing: .15em; touch-action: manipulation; background: rgba(255,63,214,.08); }
+@media (max-height: 520px) { .col { width: min(100%, 820px); } .card ol { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 18px; } .card li { font-size: 12.5px; line-height: 1.35; } h2 { font-size: 18px; } .card { padding: 10px 12px; } #screen-menu .col { margin-top: 30vh !important; } .screen { gap: 8px; } .btn { min-height: 48px; padding: 8px 14px; } .grade { font-size: 64px; } }
+</style>
+</head>
+<body>
+<div id="insetProbe"></div>
+<canvas id="stage"></canvas>
+
+<div id="hudBtns">
+  <button class="btn" id="btnPause" aria-label="Pause"><svg viewBox="0 0 24 24"><rect x="5" y="4" width="5" height="16" rx="1"/><rect x="14" y="4" width="5" height="16" rx="1"/></svg></button>
+  <button class="btn" id="btnMusic" aria-label="Music on/off"><svg id="icoMusic" viewBox="0 0 24 24"><path d="M9 18V6l10-2v12" stroke="currentColor" stroke-width="2" fill="none" stroke-linejoin="round"/><circle cx="7" cy="18" r="2.6"/><circle cx="17" cy="16" r="2.6"/><path id="icoMusicX" d="M3 3l18 18" stroke="#ff4d7e" stroke-width="2.6" stroke-linecap="round" style="display:none"/></svg></button>
+  <button class="btn" id="btnMute" aria-label="Mute"><svg id="icoSound" viewBox="0 0 24 24"><path d="M3 9v6h4l5 4V5L7 9H3z"/><path d="M15 8a5 5 0 0 1 0 8M17.5 5.5a9 9 0 0 1 0 13" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/></svg></button>
+</div>
+
+<button class="arrow up" id="aLU" data-dir="-1" aria-label="Hold to tilt the grid counter-clockwise (left up arrow)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 15l7-7 7 7"/><path d="M5 21l7-7 7 7" opacity=".45"/></svg></button>
+<button class="arrow down" id="aLD" data-dir="1" aria-label="Hold to tilt the grid clockwise (left down arrow)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 15l7-7 7 7"/><path d="M5 21l7-7 7 7" opacity=".45"/></svg></button>
+<button class="arrow up" id="aRU" data-dir="-1" aria-label="Hold to tilt the grid counter-clockwise (right up arrow)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 15l7-7 7 7"/><path d="M5 21l7-7 7 7" opacity=".45"/></svg></button>
+<button class="arrow down" id="aRD" data-dir="1" aria-label="Hold to tilt the grid clockwise (right down arrow)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 15l7-7 7 7"/><path d="M5 21l7-7 7 7" opacity=".45"/></svg></button>
+<button id="lockBtn" aria-label="Tap the gauge triangle to lock your tilt for 8 seconds. Tap it again to release."></button>
+<button id="fireBtn" aria-label="Fire laser (frozen mode)">FIRE<small>LASER +BONUS</small></button>
+<button id="escBtn" aria-label="Escape the frozen grid">ESC<small>UNFREEZE</small></button>
+
+<section class="screen" id="screen-boot" aria-label="Start">
+  <button id="bootTap" class="blink">TAP TO START</button>
+  <div class="tag foot">A SMARTBEAN PROTOTYPE &middot; TEST BUILD</div>
+</section>
+
+<section class="screen" id="screen-video" aria-label="Title video">
+  <video id="titleVideo" playsinline webkit-playsinline preload="auto" poster="assets/poster.jpg">
+    <source src="assets/title.mp4" type="video/mp4">
+    <source src="assets/title.webm" type="video/webm">
+  </video>
+  <button class="btn" id="skipBtn">SKIP &#9654;&#9654;</button>
+</section>
+
+<section class="screen" id="screen-menu" aria-label="Menu">
+  <div class="col" style="margin-top:34vh">
+    <button class="btn primary" id="mStart">START</button>
+    <button class="btn" id="mPractice">PRACTICE: NO TIME LIMIT</button>
+    <button class="btn" id="mHow">HOW TO PLAY</button>
+    <button class="btn" id="mSettings">SETTINGS</button>
+    <div class="foot">A SMARTBEAN PROTOTYPE &middot; TEST BUILD</div>
+  </div>
+</section>
+
+<section class="screen scroll" id="screen-howto" aria-label="How to play">
+  <div class="col">
+    <h2 id="howTitle">HOW TO PLAY</h2>
+    <div class="card" id="howCard">
+      <ol>
+        <li><b class="n">1</b><span><span class="hc">TAP</span> anywhere when the ring closes on a letter &mdash; on the <span class="hc">KICK</span>. That snaps it back home. <span class="hl">PERFECT &plusmn;75 ms</span>, GOOD &plusmn;145 ms (wider in slow mode). Rings show up early, so you have time. Misses shove the grid.</span></li>
+        <li><b class="n">2</b><span><span class="hc">DRAG the slider</span>, <span class="hc">HOLD the &#9650; &#9660; arrows</span> (either side) or twist two fingers to rotate the tilted grid. The gauge shows the real tilt.</span></li>
+        <li><b class="n">3</b><span><span class="hm">THE AI LIES.</span> The % is unreliable. Park at <span class="hm">100%</span> (under 0.6&deg;) and it says <span class="hc">ALIGNED. GRID FROZEN.</span> &mdash; 3 s locked out, combo gone. <span class="hc">Frozen? Fire lasers for bonus, or tap ESC.</span></span></li>
+        <li><b class="n">4</b><span><span class="hl">THE REAL WIN:</span> stay <span class="hl">1.5&ndash;4&deg; off</span> (green) and keep your combo. Fill the ZERO METER &rarr; <span class="hl">NEW ZERO SET</span>. A miss lets the meter slip slowly, so the next hits can pick the streak back up.</span></li>
+        <li><b class="n">5</b><span><span class="hc">LOCK YOUR TILT:</span> tap the <span class="hc">arrow marker on the gauge</span> (or press L) to hold the tilt still for <span class="hl">8 s</span>. Tap the same marker again to let go early. Then it recharges for 6 s.</span></li>
+        <li><b class="n">6</b><span><span class="hl">ENERGY ORBS:</span> a glowing orb flies down a lane. <span class="hc">Tilt so the catcher bracket sits on its lane</span> when it arrives to catch it: <span class="hl">+10 s</span> on the clock (max +30 s) and the zero meter jumps by <span class="hl">three taps</span>. Some lanes are inside the green zone, some outside. No penalty if you miss.</span></li>
+        <li><b class="n">7</b><span><span class="hl">TANGENT:</span> a line drifts across the grid and shows its gradient, <span class="hc">m</span>. A flat tangent has <span class="hl">gradient 0</span>. <span class="hc">Touch that flat</span> and the grid cannot freeze for <span class="hl">42 s</span>. A sloped line does not do this.</span></li>
+      </ol>
+      <p class="hnote">Can't hear the kick? <span class="hc">MUSIC: OFF</span> in SETTINGS (or the note button) mutes the song but keeps SFX; the grid pulses on the beat and <span class="hc">BEAT TICK</span> adds a metronome. Too fast? <span class="hc">GAME SPEED</span> in SETTINGS: 85% or 70% slow mode (the song is muted, the beat stays on screen, friendlier timing; final grade capped at A). <span class="hc">BEAT TICK</span> adds a click. Want zero pressure? <span class="hc">MODE: NO TIME LIMIT</span> (or <span class="hc">PRACTICE</span> on the menu): the section loops until you set a zero (final grade capped at B).</p>
+    </div>
+    <button class="btn primary" id="howGo">START LEVEL 1</button>
+    <button class="btn small" id="howBack">BACK</button>
+  </div>
+</section>
+
+<section class="screen" id="screen-intro" aria-label="Level intro">
+  <div class="col">
+    <h2 id="introNum">LEVEL 2</h2>
+    <div class="big nz" id="introName">THE % FLIPS</div>
+    <div class="card"><p id="introText"></p></div>
+    <button class="btn primary" id="introGo">GO</button>
+  </div>
+</section>
+
+<section class="screen scroll" id="screen-settings" aria-label="Settings">
+  <div class="col">
+    <h2>SETTINGS</h2>
+    <div class="card stack">
+      <div class="row"><label for="rngVol">VOLUME</label><span id="volVal">80%</span></div>
+      <input type="range" id="rngVol" min="0" max="100" value="80" aria-label="Volume">
+      <button class="btn small" id="setMute">MUTE: OFF</button>
+      <button class="btn small" id="setMusic">MUSIC: ON</button>
+      <button class="btn small" id="setSfx">SFX: ON</button>
+      <button class="btn small" id="setTick">BEAT TICK: OFF</button>
+    </div>
+    <div class="card stack">
+      <div class="row"><span>LATENCY OFFSET</span><span id="latVal">0 ms</span></div>
+      <div class="row"><button class="btn small" id="latMinus" aria-label="minus 10 ms">&minus;10</button><button class="btn small" id="latCal">CALIBRATE</button><button class="btn small" id="latPlus" aria-label="plus 10 ms">+10</button></div>
+      <p class="foot" style="text-transform:none;letter-spacing:0">Positive = you tend to tap late (Bluetooth, slow screens). The game subtracts it from your taps.</p>
+    </div>
+    <div class="card stack">
+      <button class="btn small" id="setRM">REDUCE MOTION: OFF</button>
+      <button class="btn small" id="setOrbs">ENERGY ORBS: ON</button>
+      <button class="btn small" id="setMode">MODE: STANDARD</button>
+      <button class="btn small" id="setSpeed">GAME SPEED: 100%</button>
+      <button class="btn small" id="setArrows">ARROW BUTTONS: ON</button>
+      <button class="btn small" id="setHap">HAPTICS: ON</button>
+    </div>
+    <button class="btn primary" id="setBack">BACK</button>
+  </div>
+</section>
+
+<section class="screen" id="screen-calib" aria-label="Calibrate latency">
+  <div class="col">
+    <h2>CALIBRATE</h2>
+    <p id="calibText">Tap the pad on every click. Ten clicks.</p>
+    <button id="calibPad" class="btn" style="min-height:140px" disabled>TAP ON THE CLICK</button>
+    <div class="kv"><span>TAPS</span><b id="calibN">0</b><span>OFFSET</span><b id="calibOff">&ndash;</b></div>
+    <div class="row"><button class="btn small" id="calibCancel">CANCEL</button><button class="btn small primary" id="calibStart">START</button><button class="btn small" id="calibApply" disabled>APPLY</button></div>
+  </div>
+</section>
+
+<section class="screen scroll" id="screen-pause" aria-label="Paused">
+  <div class="col">
+    <h2>PAUSED</h2>
+    <button class="btn primary" id="pResume">RESUME</button>
+    <button class="btn small" id="pMusic">MUSIC: ON</button>
+    <button class="btn small" id="pSpeed">SPEED 100% (NEXT LEVEL)</button>
+    <button class="btn" id="pRestart">RESTART LEVEL</button>
+    <button class="btn" id="pSettings">SETTINGS</button>
+    <button class="btn small" id="pQuit">QUIT TO MENU</button>
+    <button class="btn" id="pExit" style="display:none">EXIT PRACTICE</button>
+  </div>
+</section>
+
+<section class="screen" id="screen-zeroset" aria-label="New zero set">
+  <div class="col">
+    <div class="big zs" id="zsBig">NEW ZERO SET</div>
+    <p class="hc" id="zsTag">NO TIME LIMIT</p>
+    <div class="card"><div class="kv" id="zsKv"></div></div>
+    <p class="hm">"I NEVER DOUBTED YOU." (I DID.)</p>
+    <button class="btn primary" id="zsContinue">CONTINUE</button>
+    <button class="btn" id="zsStay">STAY &amp; KEEP PRACTICING</button>
+  </div>
+</section>
+
+<section class="screen scroll" id="screen-result" aria-label="Level result">
+  <div class="col">
+    <h2 id="resTitle">LEVEL 1 COMPLETE</h2>
+    <div class="big" id="resZero">NEW ZERO SET</div>
+    <div class="card"><div class="kv" id="resKv"></div></div>
+    <p id="resNote" class="hm"></p>
+    <button class="btn primary" id="resNext">NEXT LEVEL</button>
+    <button class="btn small" id="resRetry">RETRY LEVEL</button>
+  </div>
+</section>
+
+<section class="screen scroll" id="screen-final" aria-label="Final grade">
+  <div class="col">
+    <h2>FINAL GRADE</h2>
+    <div class="grade" id="finGrade">A</div>
+    <p id="finQuip" class="hm"></p>
+    <p id="finSlow" class="hc"></p>
+    <div class="card"><div class="kv" id="finKv"></div></div>
+    <button class="btn primary" id="finCredits">CREDITS</button>
+    <button class="btn small" id="finAgain">PLAY AGAIN</button>
+  </div>
+</section>
+
+<section class="screen" id="screen-credits" aria-label="Credits">
+  <img id="creditsFrame" src="assets/poster.jpg" alt="MISALIGNED title card">
+  <div id="creditsView"><div id="creditsList">
+    <h1>MISALIGNED</h1>
+    <div class="cl"><small>A</small>SMARTBEAN PROTOTYPE</div>
+    <div class="cl"><small>TAGLINE</small>prototype build</div>
+    <div class="cl"><small>NARRATOR</small>AI // ALIGNMENT CHECK<br>(UNRELIABLE)</div>
+    <div class="cl"><small>MUSIC</small>Misaligned<br>(synthesized, original)</div>
+    <div class="cl"><small>TITLE FONT</small>Orbitron (SIL OFL)</div>
+    <div class="cl"><small>UI FONT</small>Space Mono (SIL OFL)</div>
+    <div class="cl" id="crSlow" style="display:none"></div>
+    <div class="cl"><small>NOTE</small>TEST BUILD</div>
+    <div class="cl"><small>THANKS FOR PLAYING</small>STAY CROOKED.</div>
+  </div></div>
+  <div id="creditsBtns"><button class="btn" id="crMenu">BACK TO MENU</button><button class="btn small" id="crAgain">PLAY AGAIN</button></div>
+</section>
+
+<script src="js/rules.js?v=11"></script>
+<script src="js/audio.js?v=11"></script>
+<script src="js/render.js?v=11"></script>
+<script src="js/main.js?v=11"></script>
+</body>
+</html>
