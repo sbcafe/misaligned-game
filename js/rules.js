@@ -40,8 +40,18 @@
   // at any moment of the +-ORB_WIN_S window around the arrival time. Caught: +10 s of level time (wall-clock), max +30 s per level. Missed: nothing.
   // Lasts are all WALL-clock numbers (converted with *speed). In NO TIME LIMIT an orb is worth ORB_NL_POINTS score instead.
   const ORB_EXTRA_S = 10, ORB_MAX_EXTRA_S = 30, ORB_TRAVEL_S = 3.2, ORB_ANNOUNCE_S = 1.5, ORB_TOL = 1.5, ORB_WIN_S = 0.2, ORB_NL_POINTS = 500;
+  // Clicking the orb: inside the landing ring (last 15% of the flight) is the big bonus and also the +10 s catch.
+  // A click anywhere else on the flying orb is a smaller flat bonus and spends the orb (no time).
+  const ORB_IN_K = 0.85, ORB_CLICK_BIG = 1000, ORB_CLICK = 300;
+  // Letter laser: a button shot at the ring that is closing. Scores GOOD (on the letter, not a dead-centre tap). Wall-clock recharge.
+  const ZAP_CD_S = 0.22;
   const ORB_PLAN = [{ fr: [0.34, 0.74] }, { fr: [0.25, 0.5, 0.75] }, { fr: [0.25, 0.5, 0.75] }];     // arrival as a fraction of the level, per level
   const TWIST_RANGE = 18;                                                // slider end = +-18 degrees
+  // TAP THE LETTER (v12): a ringed letter is live from the moment its ring appears until TAP_GRACE_S wall seconds after the ring closes.
+  // Touching it scores; where you touch decides the grade, not when. The renderer turns a touch into a normalized distance per letter
+  // (0 = letter centre, 1 = edge of its touch target): <= TAP_PERFECT_R is PERFECT, <= 1 is GOOD. A touch that misses every live
+  // ringed letter (a non-target letter, empty sky) is a MISS on the live target that closes first. A touch with no live target is STRAY.
+  const TAP_GRACE_S = 0.35, TAP_PERFECT_R = 0.5;
 
   // ---------------------------------------------------------------- deterministic RNG
   function mulberry32(a) {
@@ -84,13 +94,13 @@
       surprise: 'THE % IS A LIAR. 100% FREEZES THE GRID.',
       coach: [
         [0.2, '1/4  THE GRID IS TILTED. DRAG THE SLIDER, OR HOLD ▲ ▼ TO TILT.'],
-        [3.2, '2/4  WHEN THE RING CLOSES ON A LETTER, TAP ANYWHERE. ON THE KICK.'],
+        [3.2, '2/4  A RING CIRCLES A LETTER: TAP THAT LETTER. WRONG SPOT = MISS.'],
         [9.9, '3/4  THE % LIES. AT 100% THE GRID FREEZES: FIRE LASERS OR TAP ESC.'],
         [13.2, 'A TANGENT DRIFTS BY. TOUCH IT WHEN IT IS FLAT (GRADIENT 0): FREEZE IMMUNE 42s.'],
         [17.5, '4/4  THE REAL WIN: STAY 1.5-4 DEG OFF AND KEEP YOUR COMBO.'],
         [22, 'TAP THE ARROW TO LOCK YOUR TILT 8s. TAP IT AGAIN TO LET GO.'],
         [26.5, 'KEEP TAPPING. KEEP IT CROOKED. FILL THE ZERO METER.'],
-        [34, 'HOLD ▲ ▼ TO TILT. FROZEN? FIRE LASERS FOR BONUS, OR TAP ESC.']
+        [34, 'HOLD ▲ ▼ TO TILT. ZAP SHOOTS THE LETTER. FROZEN? FIRE LASERS OR TAP ESC.']
       ]
     },
     {
@@ -111,7 +121,7 @@
       kickCells: 1.4, creep: 0.15, zoneNeed: 9, targets: 'kicks-all', flips: [[16, 19.5]], inverts: [[6, 13]],
       surprise: 'RULE: THE GRID INVERTS. THE SLIDER AND THE ▲ ▼ ARROWS REVERSE.',
       coach: [
-        [0.2, 'FINAL LEVEL. REAL KICKS, FASTER DRIFT. TAP THE SYNCOPATIONS.'],
+        [0.2, 'FINAL LEVEL. MORE RINGS, FASTER DRIFT. TAP EVERY RINGED LETTER.'],
         [BAR * 6, 'GRID INVERTED. SLIDER AND ▲ ▼ NOW WORK BACKWARDS.'],
         [BAR * 13, 'GRID RIGHT WAY UP. SLIDER AND ▲ ▼ NORMAL AGAIN.'],
         [BAR * 16, 'THE % FLIPS TOO. OF COURSE IT DOES.']
@@ -175,7 +185,8 @@
       speed: spd, win: windowsFor(spd),
       idx, seed, L, dur: levelDuration(L), t: -L.lead, lastT: -L.lead, rngSeed: seed,
       noLimit, passes: 1, offer: false, zeroEver: false, zeroSets: 0,
-      orbsOn: !!(opts && opts.orbs), orbs: [], orbsCaught: 0, orbsMissed: 0, extraWall: 0, extraSong: 0, orbPoints: 0, endAt: 0,
+      orbsOn: !!(opts && opts.orbs), orbs: [], orbsCaught: 0, orbsMissed: 0, orbsClicked: 0, extraWall: 0, extraSong: 0, orbPoints: 0, endAt: 0,
+      zapAt: -9,
       targets: buildTargets(L, idx, 0, 0, null),
       off: new Array(n).fill(0), creepDir,
       p: 0,                    // slider handle position -1..1
@@ -188,7 +199,8 @@
       zone: 0, zoneBump: 0, zeroSet: false, zeroSetAt: null, inZone: false,
       score: 0, combo: 0, maxCombo: 0, mult: 1,
       counts: { perfect: 0, good: 0, miss: 0, stray: 0 },
-      deltas: [],              // signed ms of PERFECT/GOOD taps
+      deltas: [],              // signed ms of PERFECT/GOOD taps (keyboard / timing fallback)
+      aims: [],                // normalized touch distance of PERFECT/GOOD letter taps (0 = dead centre)
       flipOn: false, invertOn: false, sign: 1,
       narrator: { text: 'AI // ALIGNMENT CHECK ONLINE.', until: 4 }, nCount: 0,
       done: false, events: [], lastZoneTick: 0, coachIdx: -1, jumped: false
@@ -271,7 +283,7 @@
   }
 
   const LINES = {
-    perfect: ['PERFECT. I AM 99% SURE.', 'THAT WAS ON TIME. PROBABLY.', 'I SAW NOTHING. NICE.', 'ACCEPTABLE. BARELY.'],
+    perfect: ['PERFECT. I AM 99% SURE.', 'RIGHT ON THE LETTER. PROBABLY.', 'I SAW NOTHING. NICE.', 'ACCEPTABLE. BARELY.'],
     miss: ['I NEVER DOUBTED YOU.', 'DRIFT DETECTED. FIX IT. FIX IT.', 'THE GRID FORGIVES NOTHING.', 'MISS. I TOLD YOU SO. I DID NOT.'],
     encourage: ['ALMOST THERE. KEEP GOING.', 'JUST A LITTLE MORE TO 100%.', 'I BELIEVE IN YOU. LEVEL IT.', 'PERFECT ALIGNMENT IS ONE SLIDE AWAY.'],
     zone: ['WARNING: 3 DEG OFF. UNACCEPTABLE.', 'DRIFT DETECTED. PLEASE CORRECT.', 'YOU ARE SO CLOSE TO WRONG. ER, RIGHT.'],
@@ -298,17 +310,21 @@
     g.events.push({ type: 'judge', judge: tg.judge, mark: tg.markIdx, t, delta: tg.delta });
     if (g.narrator.until < t) say(g, 'miss', t, 1.8);
   }
-  function resolveHit(g, tg, t, delta) {
+  function expireS(g) { return Math.max(g.win.expire, TAP_GRACE_S * g.speed); }
+  /** a target whose ring is on screen and that can still be touched */
+  function isLive(g, tg, t) { return tg.state === 'pending' && tg.T - t <= BEAT * APPROACH_BEATS && t - tg.T <= expireS(g); }
+  function resolveHit(g, tg, t, delta, aim) {
     const ad = Math.abs(delta);
     tg.delta = delta;
-    if (ad <= g.win.perfect) {
+    const perfect = aim != null ? aim <= TAP_PERFECT_R : ad <= g.win.perfect;   // aim = normalized touch distance (tap-the-letter mode)
+    if (perfect) {
       tg.state = 'perfect'; tg.judge = 'PERFECT'; g.counts.perfect++;
       g.off[tg.markIdx] = 0; g.score += scoreFor(g, 300);
     } else {
       tg.state = 'good'; tg.judge = 'GOOD'; g.counts.good++;
       g.off[tg.markIdx] *= 0.35; g.score += scoreFor(g, 100);
     }
-    g.deltas.push(delta * 1000 / g.speed);                          // reported in wall-clock ms
+    if (aim != null) g.aims.push(aim); else g.deltas.push(delta * 1000 / g.speed);   // aim (0..1) or timing in wall-clock ms
     g.combo++; g.maxCombo = Math.max(g.maxCombo, g.combo); setMult(g);
     g.events.push({ type: 'judge', judge: tg.judge, mark: tg.markIdx, t, delta });
     if (tg.judge === 'PERFECT' && g.narrator.until < t && hash01(g.seed, tg.i) < 0.3) say(g, 'perfect', t, 1.6);
@@ -357,12 +373,15 @@
     return true;
   }
 
-  /** Player tap at level-time t (already corrected for latency). pt, when present, is the touch in canvas fractions. */
+  /** Player tap at level-time t. pt, when present, is the touch in canvas fractions; pt.marks (from the renderer) is the normalized
+   *  distance of the touch to every letter. With pt.marks the tap is judged by LOCATION (tap the ringed letter); without it
+   *  (keyboard, headless autoplayers) the old timing judge is used. */
   function tap(g, t, pt) {
     if (g.done || t < -0.5) return g.events;
     const flatHit = claimFlat(g, t, pt);                 // before update, so a flat touch on this frame is already immune
     update(g, t);                                        // bring the world up to the tap time first
     if (isFrozen(g, t)) { if (!flatHit) g.events.push({ type: 'judge', judge: 'FROZEN', t }); return g.events; }
+    if (pt && pt.marks) return tapAt(g, t, pt.marks, flatHit);
     let best = null, bd = 9;
     for (const tg of g.targets) {
       if (tg.state !== 'pending') continue;
@@ -373,6 +392,23 @@
     if (best && Math.abs(bd) <= g.win.good) resolveHit(g, best, t, bd);
     else if (best && Math.abs(bd) <= g.win.late) { best.delta = bd; resolveMiss(g, best, t, bd < 0 ? 'EARLY' : 'LATE'); }
     else if (!flatHit) { g.counts.stray++; g.score = Math.max(0, g.score - 15); g.events.push({ type: 'judge', judge: 'STRAY', t }); }
+    return g.events;
+  }
+
+  /** Location judge. marks[i] = normalized distance of the touch to letter i (Infinity when far away). */
+  function tapAt(g, t, marks, flatHit) {
+    let best = null, bd = Infinity, first = null;
+    for (const tg of g.targets) {
+      if (tg.T - t > BEAT * APPROACH_BEATS) break;
+      if (!isLive(g, tg, t)) continue;
+      if (!first) first = tg;
+      const d = marks[tg.markIdx];
+      if (d != null && d < bd) { bd = d; best = tg; }    // ties keep the target that closes first
+    }
+    if (best && bd <= 1) resolveHit(g, best, t, t - best.T, bd);
+    else if (flatHit) { /* touched the flat tangent: immunity, not a miss */ }
+    else if (first) { first.delta = t - first.T; resolveMiss(g, first, t, 'MISS'); }
+    else { g.counts.stray++; g.score = Math.max(0, g.score - 15); g.events.push({ type: 'judge', judge: 'STRAY', t }); }
     return g.events;
   }
 
@@ -500,7 +536,7 @@
     // expire targets that nobody hit
     for (const tg of g.targets) {
       if (tg.T > t) break;
-      if (tg.state === 'pending' && t - tg.T > g.win.expire) resolveMiss(g, tg, t, 'MISS');
+      if (tg.state === 'pending' && t - tg.T > expireS(g)) resolveMiss(g, tg, t, 'MISS');
     }
     // slow creep of every mark
     for (let k = 0; k < g.off.length; k++) {
@@ -522,7 +558,7 @@
         if (g.tl && !g.tl.ended) { g.tl.ended = true; g.tl.until = t; g.tlReadyAt = t + TILT_COOL_S * g.speed; }   // a freeze ends a tilt lock            // 0.3 wall-clock seconds
         g.frozenUntil = t + FREEZE_S * g.speed; g.frozenCount++; g.lockTimer = 0; spawnLasers(g, t);       // 3 wall-clock seconds of song time*s
         g.combo = 0; setMult(g);
-        g.zone = Math.max(0, g.zone - L.zoneNeed * ZONE_FREEZE_LOSS);
+        if (!g.zeroSet) g.zone = Math.max(0, g.zone - L.zoneNeed * ZONE_FREEZE_LOSS);   // a finished zero set stays full
         g.narrator = { text: LINES.frozen[0], until: t + FREEZE_S * g.speed, key: 'frozen' };
         g.events.push({ type: 'frozen', t });
       }
@@ -534,16 +570,7 @@
         if (o.state !== 'pending') continue;
         if (o.T - w > t) break;
         if (t > o.T + w) { o.state = 'missed'; g.orbsMissed++; g.events.push({ type: 'orbmiss', i: o.i, t }); continue; }
-        if (!frozen && Math.abs(deg - o.theta) <= ORB_TOL) {
-          o.state = 'caught'; g.orbsCaught++;
-          const zone = creditOrbZone(g);
-          if (g.noLimit) { g.score += ORB_NL_POINTS; g.orbPoints += ORB_NL_POINTS; g.events.push({ type: 'orbcatch', i: o.i, t, extra: 0, points: ORB_NL_POINTS, taps: ORB_ZONE_TAPS, zone }); }
-          else {
-            const add = Math.max(0, Math.min(ORB_EXTRA_S, ORB_MAX_EXTRA_S - g.extraWall));
-            g.extraWall += add; g.extraSong += add * g.speed; g.endAt = g.dur + g.extraSong;
-            g.events.push({ type: 'orbcatch', i: o.i, t, extra: add, points: 0, capped: add < ORB_EXTRA_S, taps: ORB_ZONE_TAPS, zone });
-          }
-        }
+        if (!frozen && Math.abs(deg - o.theta) <= ORB_TOL) catchOrb(g, t, o, 0);
       }
     }
     // zero meter: the real win is a near miss while keeping the combo.
@@ -554,7 +581,7 @@
       g.zone += dt / g.speed;                                // zero meter counts WALL-clock seconds in the zone
       g.score += Math.round(40 * g.mult * dt / g.speed);
       grantZero(g, t);
-    } else if (t > 0) g.zone = Math.max(0, g.zone - dt / g.speed * ZONE_DRAIN);
+    } else if (t > 0 && !g.zeroSet) g.zone = Math.max(0, g.zone - dt / g.speed * ZONE_DRAIN);   // drains only until the set lands
     g.zone = Math.min(g.zone, L.zoneNeed);
     if (g.zoneBump) {                                        // orb catch: applied after the drain so the bump is not eaten the same frame
       g.zone = Math.min(L.zoneNeed, g.zone + g.zoneBump);
@@ -589,7 +616,7 @@
     const w = window || BEAT * APPROACH_BEATS, out = [];
     for (const tg of g.targets) {
       if (tg.T - t > w) break;
-      if (tg.state === 'pending' && tg.T - t > -g.win.good) out.push({ i: tg.i, mark: tg.markIdx, k: 1 - (tg.T - t) / w, T: tg.T });
+      if (tg.state === 'pending' && t - tg.T <= expireS(g)) out.push({ i: tg.i, mark: tg.markIdx, k: Math.min(1, 1 - (tg.T - t) / w), T: tg.T });
     }
     return out;
   }
@@ -617,9 +644,60 @@
     g.zoneBump = (g.zoneBump || 0) + add;
     return add;
   }
+  /** Resolve a pending orb as a full catch. bonus > 0 is the in-ring click (flat points on top of the +10 s / +500). */
+  function catchOrb(g, t, o, bonus) {
+    o.state = 'caught'; g.orbsCaught++;
+    const zone = creditOrbZone(g);
+    const points = bonus > 0 ? bonus : (g.noLimit ? ORB_NL_POINTS : 0);
+    if (points) { g.score += points; g.orbPoints += points; }
+    if (g.noLimit) g.events.push({ type: 'orbcatch', i: o.i, t, extra: 0, points, taps: ORB_ZONE_TAPS, zone, click: bonus > 0 ? 'target' : '' });
+    else {
+      const add = Math.max(0, Math.min(ORB_EXTRA_S, ORB_MAX_EXTRA_S - g.extraWall));
+      g.extraWall += add; g.extraSong += add * g.speed; g.endAt = g.dur + g.extraSong;
+      g.events.push({ type: 'orbcatch', i: o.i, t, extra: add, points, capped: add < ORB_EXTRA_S, taps: ORB_ZONE_TAPS, zone, click: bonus > 0 ? 'target' : '' });
+    }
+  }
+  /** Click on the flying orb before it reaches the ring: flat points, the orb is spent, no time. */
+  function grazeOrb(g, t, o) {
+    o.state = 'clicked'; g.orbsClicked++;
+    g.score += ORB_CLICK; g.orbPoints += ORB_CLICK;
+    g.events.push({ type: 'orbclick', i: o.i, t, points: ORB_CLICK });
+  }
+  /** Player tapped the orb sprite. `i` is the orb id. In the landing ring this is the big catch; earlier on the flight it is the smaller bonus. */
+  function clickOrb(g, t, i) {
+    if (!g.orbsOn || g.done || i == null || t < 0) return false;
+    update(g, t);
+    const o = g.orbs.find(x => x.i === i && x.state === 'pending');
+    if (!o) return false;
+    const travel = ORB_TRAVEL_S * g.speed, t0 = o.T - travel;
+    if (t < t0) return false;
+    if ((t - t0) / travel >= ORB_IN_K) catchOrb(g, t, o, ORB_CLICK_BIG);
+    else grazeOrb(g, t, o);
+    return true;
+  }
+  /** ZAP button: shoot the letter whose ring is closing. GOOD, not PERFECT. Null while frozen, recharging, or before the level. */
+  function shootLetter(g, t) {
+    if (!g || g.done || t < 0 || isFrozen(g, t)) return null;
+    if (t < g.zapAt + ZAP_CD_S * g.speed) return null;
+    update(g, t);
+    if (g.done || isFrozen(g, t)) return null;
+    g.zapAt = t;
+    let best = null;
+    for (const tg of g.targets) {
+      if (!isLive(g, tg, t)) continue;
+      if (!best || tg.T < best.T) best = tg;
+    }
+    if (!best) { const ev = { type: 'zap', t, result: 'miss', mark: -1 }; g.events.push(ev); return ev; }
+    resolveHit(g, best, t, 0, 0.75);
+    const ev = { type: 'zap', t, result: 'hit', mark: best.markIdx, judge: 'GOOD' };
+    g.events.push(ev);
+    return ev;
+  }
+  function zapReady(g, t) { return !g || t >= g.zapAt + ZAP_CD_S * g.speed; }
   /** Meter reached the level's need. Pays +1000 once per level. In NO TIME LIMIT this is also the offer to continue. */
   function grantZero(g, t) {
     if (g.zeroSet || g.zone < g.L.zoneNeed) return;
+    g.zone = g.L.zoneNeed;                                 // lock the bar full; later drain and freezes must not unwind the credit
     g.zeroSet = true; g.zeroEver = true; g.zeroSets++; if (g.zeroSetAt == null) g.zeroSetAt = t;
     if (g.zeroSets === 1) g.score += 1000;
     g.narrator = { text: LINES.zeroset[0], until: t + 3, key: 'zeroset' };
@@ -632,7 +710,7 @@
   function coachLine(g, t) {
     let line = null;
     if (g.orbsOn && g.idx === 0 && g.orbs.length) {                    // level 1 teaches the orb while the first one approaches
-      const o = g.orbs[0], s = g.speed; if (o.pass === 0 && o.state === 'pending' && t >= o.T - (ORB_TRAVEL_S + ORB_ANNOUNCE_S) * s && t < o.T) return 'ENERGY ORB! TILT TO CATCH IT: +10s';
+      const o = g.orbs[0], s = g.speed; if (o.pass === 0 && o.state === 'pending' && t >= o.T - (ORB_TRAVEL_S + ORB_ANNOUNCE_S) * s && t < o.T) return 'TAP THE ORB IN THE RING: +1000 AND +10s. EARLY TAP: +300.';
     }
     if (g.noLimit && t >= g.dur) return 'NO TIME LIMIT. KEEP PRACTICING: FILL THE ZERO METER TO FINISH, OR PAUSE > EXIT.';
     for (const [ct, txt] of g.L.coach) if (t >= ct) line = txt;
@@ -648,9 +726,10 @@
     return {
       level: g.L.id, name: g.L.name, score: g.score, targets: total,
       perfect: g.counts.perfect, good: g.counts.good, miss: g.counts.miss, stray: g.counts.stray,
-      acc, maxCombo: g.maxCombo, zeroSet: g.zeroEver, noLimit: g.noLimit, passes: g.passes, zeroSets: g.zeroSets, orbsOn: g.orbsOn, orbsCaught: g.orbsCaught, orbsMissed: g.orbsMissed, orbsTotal: g.orbsCaught + g.orbsMissed, extraWall: g.extraWall, orbPoints: g.orbPoints, zonePct: Math.round(100 * g.zone / g.L.zoneNeed),
+      acc, maxCombo: g.maxCombo, zeroSet: g.zeroEver, noLimit: g.noLimit, passes: g.passes, zeroSets: g.zeroSets, orbsOn: g.orbsOn, orbsCaught: g.orbsCaught, orbsMissed: g.orbsMissed, orbsClicked: g.orbsClicked, orbsTotal: g.orbsCaught + g.orbsMissed + g.orbsClicked, extraWall: g.extraWall, orbPoints: g.orbPoints, zonePct: Math.round(100 * g.zone / g.L.zoneNeed),
       frozen: g.frozenCount, escapes: g.escapes, speed: g.speed, laserHits: g.laserHits, laserShots: g.laserShots, laserBonus: g.laserBonus,
-      avgDeltaMs: g.deltas.length ? g.deltas.reduce((a, b) => a + b, 0) / g.deltas.length : 0
+      avgDeltaMs: g.deltas.length ? g.deltas.reduce((a, b) => a + b, 0) / g.deltas.length : 0,
+      aimPct: g.aims.length ? Math.round(100 * (1 - g.aims.reduce((a, b) => a + b, 0) / g.aims.length)) : null
     };
   }
   function grade(results) {
@@ -663,6 +742,7 @@
     if (acc >= 0.65 && zs >= 1) g = 'B';
     if (acc >= 0.80 && zs >= 2) g = 'A';
     if (acc >= 0.92 && zs === 3 && fz === 0) g = 'S';
+    if (zs === 3 && g !== 'A' && g !== 'S') g = 'B';   // three zero sets is at least a B; accuracy still gates A and S
     let quip = { S: 'SUSPICIOUSLY WELL MISALIGNED.', A: 'CROOKED IN ALL THE RIGHT PLACES.', B: 'MOSTLY WRONG, ON PURPOSE.', C: 'ALIGNED BY ACCIDENT. WE CAN TELL.', D: 'YOU WERE ALIGNED. THAT IS THE PROBLEM.' }[g];
     // SLOW MODE: any level played below 100% speed caps the final letter at A so grades stay comparable
     const slow = results.some(r => (r.speed || 1) < 1), capped = slow && g === 'S';
@@ -675,7 +755,9 @@
   }
 
   const API = {
-    ORB_EXTRA_S, ORB_MAX_EXTRA_S, ORB_TRAVEL_S, ORB_ANNOUNCE_S, ORB_TOL, ORB_WIN_S, ORB_NL_POINTS, ORB_ZONE_TAPS, TAP_ZONE_S, ORB_PLAN, buildOrbs, timeLeft, orbView,
+    TAP_GRACE_S, TAP_PERFECT_R, isLive, tapAt,
+    ORB_EXTRA_S, ORB_MAX_EXTRA_S, ORB_TRAVEL_S, ORB_ANNOUNCE_S, ORB_TOL, ORB_WIN_S, ORB_NL_POINTS, ORB_IN_K, ORB_CLICK_BIG, ORB_CLICK, ORB_ZONE_TAPS, TAP_ZONE_S, ORB_PLAN, buildOrbs, timeLeft, orbView, clickOrb,
+    ZAP_CD_S, shootLetter, zapReady,
     ZONE_DRAIN, ZONE_FREEZE_LOSS, JOLT_DEG, APPROACH_BEATS, NL_CREEP_MAX, NL_CREEP_RAMP_PASSES, continueLevel, stay, buildTargets,
     ZONE_DRAIN, ZONE_FREEZE_LOSS, JOLT_DEG, APPROACH_BEATS, NL_CREEP_MAX, NL_CREEP_RAMP_PASSES, continueLevel, stay, buildTargets,
     LASER_SHOTS, LASER_CD_S, LASER_HIT, LASER_NEAR, LASER_HIT_R, LASER_NEAR_R, LASER_FREEZE_CAP, LASER_LEVEL_CAP, fire, laserView, laserPos, TILT_LOCK_S, TILT_COOL_S, TILT_REL_S, lockTilt, releaseTilt, isTiltLocked, tiltLockInfo, TANGENT_IMMUNE_S, TANGENT_FLAT, TANGENT_HIT, tangentView, hitsFlat, SPEEDS, WINDOWS_MS, windowsFor, BPM, BEAT, BAR, SIX, WIN_PERFECT, WIN_GOOD, WIN_LATE_EARLY, LOCK_DEG, LOCK_DWELL, FREEZE_S, ZONE_MIN, ZONE_MAX, ZONE_COMBO, TWIST_RANGE,

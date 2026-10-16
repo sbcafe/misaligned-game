@@ -116,6 +116,12 @@ body.arrows-off .arrow { display: none !important; }
 #fireBtn.on { display: block; } #fireBtn.dim { opacity: .45; animation: none; }
 #fireBtn small { display: block; font: 700 10px/1.2 "MIS Mono", monospace; letter-spacing: .1em; margin-top: 4px; color: #ff9bea; text-shadow: none; }
 #fireBtn.pressed { transform: scale(.94); background: rgba(140, 20, 110, .9); }
+#zapBtn { position: fixed; z-index: 7; display: none; min-width: 132px; height: 64px; padding: 0 26px; border-radius: 16px; font: 900 26px/1 "MIS Display Black", sans-serif; letter-spacing: .12em; color: #10200a;
+  background: rgba(214, 255, 116, .88); border: 2.5px solid #d6ff74; box-shadow: 0 0 22px rgba(214, 255, 116, .65), inset 0 0 16px rgba(255, 255, 255, .35); text-shadow: none;
+  touch-action: none; }
+#zapBtn.on { display: block; } #zapBtn.dim { opacity: .4; }
+#zapBtn small { display: block; font: 700 10px/1.2 "MIS Mono", monospace; letter-spacing: .1em; margin-top: 4px; color: #24500a; text-shadow: none; }
+#zapBtn.pressed { transform: scale(.94); background: rgba(160, 220, 70, .95); }
 body.rm #fireBtn { animation: none; }
 #escBtn:active { transform: scale(.95); background: rgba(40, 90, 140, .9); }
 @keyframes escPulse { 50% { transform: scale(1.06); box-shadow: 0 0 34px rgba(154, 252, 255, 1), inset 0 0 20px rgba(154, 252, 255, .5); } }
@@ -139,6 +145,7 @@ body.rm #escBtn { animation: none; }
 <button class="arrow up" id="aRU" data-dir="-1" aria-label="Hold to tilt the grid counter-clockwise (right up arrow)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 15l7-7 7 7"/><path d="M5 21l7-7 7 7" opacity=".45"/></svg></button>
 <button class="arrow down" id="aRD" data-dir="1" aria-label="Hold to tilt the grid clockwise (right down arrow)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 15l7-7 7 7"/><path d="M5 21l7-7 7 7" opacity=".45"/></svg></button>
 <button id="lockBtn" aria-label="Tap the gauge triangle to lock your tilt for 8 seconds. Tap it again to release."></button>
+<button id="zapBtn" aria-label="Shoot a laser at the letter with a ring">ZAP<small>LETTER</small></button>
 <button id="fireBtn" aria-label="Fire laser (frozen mode)">FIRE<small>LASER +BONUS</small></button>
 <button id="escBtn" aria-label="Escape the frozen grid">ESC<small>UNFREEZE</small></button>
 
@@ -170,15 +177,15 @@ body.rm #escBtn { animation: none; }
     <h2 id="howTitle">HOW TO PLAY</h2>
     <div class="card" id="howCard">
       <ol>
-        <li><b class="n">1</b><span><span class="hc">TAP</span> anywhere when the ring closes on a letter &mdash; on the <span class="hc">KICK</span>. That snaps it back home. <span class="hl">PERFECT &plusmn;75 ms</span>, GOOD &plusmn;145 ms (wider in slow mode). Rings show up early, so you have time. Misses shove the grid.</span></li>
+        <li><b class="n">1</b><span>A ring circles a letter: <span class="hc">TAP THAT LETTER</span> while its ring is on screen, or press <span class="hl">ZAP</span> to shoot it. No timing needed. Dead centre of a tap is <span class="hl">PERFECT</span>. The laser and a tap near the letter are GOOD. Tapping the <span class="hm">wrong spot or a letter with no ring</span> is a MISS and shoves the grid.</span></li>
         <li><b class="n">2</b><span><span class="hc">DRAG the slider</span>, <span class="hc">HOLD the &#9650; &#9660; arrows</span> (either side) or twist two fingers to rotate the tilted grid. The gauge shows the real tilt.</span></li>
         <li><b class="n">3</b><span><span class="hm">THE AI LIES.</span> The % is unreliable. Park at <span class="hm">100%</span> (under 0.6&deg;) and it says <span class="hc">ALIGNED. GRID FROZEN.</span> &mdash; 3 s locked out, combo gone. <span class="hc">Frozen? Fire lasers for bonus, or tap ESC.</span></span></li>
-        <li><b class="n">4</b><span><span class="hl">THE REAL WIN:</span> stay <span class="hl">1.5&ndash;4&deg; off</span> (green) and keep your combo. Fill the ZERO METER &rarr; <span class="hl">NEW ZERO SET</span>. A miss lets the meter slip slowly, so the next hits can pick the streak back up.</span></li>
+        <li><b class="n">4</b><span><span class="hl">THE REAL WIN:</span> stay <span class="hl">1.5&ndash;4&deg; off</span> (green) and keep your combo. Fill the ZERO METER &rarr; <span class="hl">NEW ZERO SET</span>, and the bar stays full. Before that, a miss lets the meter slip slowly, so the next hits can pick the streak back up.</span></li>
         <li><b class="n">5</b><span><span class="hc">LOCK YOUR TILT:</span> tap the <span class="hc">arrow marker on the gauge</span> (or press L) to hold the tilt still for <span class="hl">8 s</span>. Tap the same marker again to let go early. Then it recharges for 6 s.</span></li>
-        <li><b class="n">6</b><span><span class="hl">ENERGY ORBS:</span> a glowing orb flies down a lane. <span class="hc">Tilt so the catcher bracket sits on its lane</span> when it arrives to catch it: <span class="hl">+10 s</span> on the clock (max +30 s) and the zero meter jumps by <span class="hl">three taps</span>. Some lanes are inside the green zone, some outside. No penalty if you miss.</span></li>
+        <li><b class="n">6</b><span><span class="hl">ENERGY ORBS:</span> a glowing orb flies down a lane. <span class="hc">Tap it in the ring</span> (it says TAP) for <span class="hl">+1000 and +10 s</span>. Tap it earlier, anywhere on the orb, for <span class="hl">+300</span> and no extra time. Or tilt so the catcher sits on its lane when it arrives: <span class="hl">+10 s</span> (max +30 s). The zero meter jumps by three taps on a catch. No penalty if you let it fly past.</span></li>
         <li><b class="n">7</b><span><span class="hl">TANGENT:</span> a line drifts across the grid and shows its gradient, <span class="hc">m</span>. A flat tangent has <span class="hl">gradient 0</span>. <span class="hc">Touch that flat</span> and the grid cannot freeze for <span class="hl">42 s</span>. A sloped line does not do this.</span></li>
       </ol>
-      <p class="hnote">Can't hear the kick? <span class="hc">MUSIC: OFF</span> in SETTINGS (or the note button) mutes the song but keeps SFX; the grid pulses on the beat and <span class="hc">BEAT TICK</span> adds a metronome. Too fast? <span class="hc">GAME SPEED</span> in SETTINGS: 85% or 70% slow mode (the song is muted, the beat stays on screen, friendlier timing; final grade capped at A). <span class="hc">BEAT TICK</span> adds a click. Want zero pressure? <span class="hc">MODE: NO TIME LIMIT</span> (or <span class="hc">PRACTICE</span> on the menu): the section loops until you set a zero (final grade capped at B).</p>
+      <p class="hnote">Can't hear the kick? <span class="hc">MUSIC: OFF</span> in SETTINGS (or the note button) mutes the song but keeps SFX; the grid pulses on the beat and <span class="hc">BEAT TICK</span> adds a metronome. Too fast? <span class="hc">GAME SPEED</span> in SETTINGS: 85% or 70% slow mode (the song is muted, the beat stays on screen, slower rings; final grade capped at A). <span class="hc">BEAT TICK</span> adds a click. Want zero pressure? <span class="hc">MODE: NO TIME LIMIT</span> (or <span class="hc">PRACTICE</span> on the menu): the section loops until you set a zero (final grade capped at B).</p>
     </div>
     <button class="btn primary" id="howGo">START LEVEL 1</button>
     <button class="btn small" id="howBack">BACK</button>
@@ -296,9 +303,9 @@ body.rm #escBtn { animation: none; }
   <div id="creditsBtns"><button class="btn" id="crMenu">BACK TO MENU</button><button class="btn small" id="crAgain">PLAY AGAIN</button></div>
 </section>
 
-<script src="js/rules.js?v=11"></script>
-<script src="js/audio.js?v=11"></script>
-<script src="js/render.js?v=11"></script>
-<script src="js/main.js?v=11"></script>
+<script src="js/rules.js?v=15"></script>
+<script src="js/audio.js?v=15"></script>
+<script src="js/render.js?v=15"></script>
+<script src="js/main.js?v=15"></script>
 </body>
 </html>

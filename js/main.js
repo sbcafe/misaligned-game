@@ -72,7 +72,7 @@
 
   // ------------------------------------------------------------------ fx (purely visual)
   let fx = newFx();
-  function newFx() { return { floats: [], bursts: [], timeFlash: 0, popups: [], banners: [], lasers: [], sparks: [], zaps: [], laserFlash: 0, shake: 0, glitchUntil: 0, zeroFlash: 0, missFlash: 0, tapFlash: 0, invertAnim: null }; }
+  function newFx() { return { floats: [], bursts: [], timeFlash: 0, popups: [], banners: [], lasers: [], letterBeams: [], sparks: [], zaps: [], laserFlash: 0, shake: 0, glitchUntil: 0, zeroFlash: 0, missFlash: 0, tapFlash: 0, invertAnim: null }; }
   const now = () => performance.now() / 1000;
   const JCOL = { PERFECT: '#d6ff74', GOOD: '#6af6ff', MISS: '#ff4d7e', EARLY: '#ff9a3c', LATE: '#ff9a3c', STRAY: '#8d7aaa', FROZEN: '#9afcff' };
   function banner(text, color, dur, size, y) { fx.banners.push({ text, color, t0: now(), dur: dur || 2.2, size: size || 24, y }); if (fx.banners.length > 4) fx.banners.shift(); }
@@ -143,9 +143,19 @@
         banner('ZERO GRADIENT · FREEZE IMMUNE ' + R.TANGENT_IMMUNE_S + 's', '#d6ff74', 2.2, 22);
       } else if (e.type === 'orbcatch') {
         vib(14); A.chime(); fx.timeFlash = tn + 1.0; fx.bursts.push({ t0: tn });
-        fx.floats.push({ t0: tn, text: e.points ? '+' + e.points : (e.extra ? '+' + e.extra + 's' : 'MAX TIME'), color: '#d6ff74' });
+        const bits = []; if (e.points) bits.push('+' + e.points); if (e.extra) bits.push('+' + e.extra + 's');
+        fx.floats.push({ t0: tn, text: bits.length ? bits.join('  ') : 'MAX TIME', color: '#d6ff74' });
         fx.floats.push({ t0: tn, text: 'ZERO +' + (e.taps || 3), color: '#9dffb3', small: true });
         if (fx.floats.length > 4) fx.floats.shift();
+      } else if (e.type === 'orbclick') {
+        vib(8); A.blip('GOOD');
+        fx.floats.push({ t0: tn, text: '+' + e.points, color: '#ffe27a' });
+        if (fx.floats.length > 4) fx.floats.shift();
+      } else if (e.type === 'zap') {
+        A.zap('fire');
+        const dest = e.mark >= 0 ? rend.markScreen(g, g.lastT, e.mark) : { x: rend.V.W / 2, y: rend.L.horizonY - 30 };
+        fx.letterBeams.push({ t0: tn, hit: e.result === 'hit', x: dest.x, y: dest.y });
+        if (fx.letterBeams.length > 6) fx.letterBeams.shift();
       } else if (e.type === 'orbmiss') {
         fx.floats.push({ t0: tn, text: 'ORB LOST', color: '#8d7aaa', small: true }); if (fx.floats.length > 4) fx.floats.shift();
       } else if (e.type === 'zerooffer') {
@@ -172,6 +182,7 @@
     if (!g || !running || paused || g.done) return;
     const t = tapT(ts);
     fx.tapFlash = now() + 0.1;
+    if (pt) pt.marks = rend.markHits(g, g.lastT, pt.x * rend.V.W, pt.y * rend.V.H);   // tap the letter: judged by where you touch, against the frame on screen
     R.tap(g, t, pt);
     handleEvents(R.drain(g));
   }
@@ -218,6 +229,7 @@
     }
     const lb = $('lockBtn'); lb.style.left = (L.trackX0 - 10) + 'px'; lb.style.width = (L.trackX1 - L.trackX0 + 20) + 'px'; lb.style.top = (L.gaugeY - 20) + 'px'; lb.style.height = '64px';
     const fb = $('fireBtn'); fb.style.left = '50%'; fb.style.marginLeft = '-66px'; fb.style.top = (L.escBottom - 64 - 10 - 64) + 'px';
+    const zb = $('zapBtn'); zb.style.left = '50%'; zb.style.marginLeft = '-66px'; zb.style.top = (L.escBottom - 64) + 'px';
     const esc = $('escBtn'); esc.style.left = '50%'; esc.style.marginLeft = '-66px'; esc.style.top = (L.escBottom - 64) + 'px';
   }
   function applyArrows(dt, t) {
@@ -252,6 +264,15 @@
   }
   $('fireBtn').addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); const b = $('fireBtn'); b.classList.add('pressed'); setTimeout(() => b.classList.remove('pressed'), 90); doFire(); });
   $('fireBtn').addEventListener('contextmenu', e => e.preventDefault());
+  // ZAP: shoot the ringed letter. Separate from the canvas, so it is never also a letter tap.
+  function doZap() {
+    if (!g || !running || paused || g.done || state !== 'play') return false;
+    const ev = R.shootLetter(g, levelT());
+    if (!ev) return false;
+    handleEvents(R.drain(g)); return true;
+  }
+  $('zapBtn').addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); const b = $('zapBtn'); b.classList.add('pressed'); setTimeout(() => b.classList.remove('pressed'), 90); doZap(); });
+  $('zapBtn').addEventListener('contextmenu', e => e.preventDefault());
   function doEscape() {
     if (!g || !running || paused || g.done) return;
     const t = levelT(); fx.tapFlash = 0;
@@ -272,16 +293,18 @@
         if (settings.tick) tickBeats();
         handleEvents(R.drain(g));
         escShow(R.isFrozen(g, t));
+        $('zapBtn').classList.toggle('on', !R.isFrozen(g, t) && t > 0);
+        $('zapBtn').classList.toggle('dim', !R.zapReady(g, t));
         if (R.isFrozen(g, t)) { const lv = R.laserView(g, t); $('fireBtn').classList.toggle('dim', !lv || lv.left <= 0); }
         const lockState = R.tiltLockInfo(g, t).state;
         $('lockBtn').classList.toggle('on', !R.isFrozen(g, t) && t > 0 && (lockState === 'ready' || lockState === 'locked'));
-        if (g.done && !endedAt) { escShow(false); $('lockBtn').classList.remove('on'); arrowEls.forEach(e => e.classList.remove('on')); endedAt = tn; A.stop(0.6); setTimeout(finishLevel, 700); running = false; }
+        if (g.done && !endedAt) { escShow(false); $('zapBtn').classList.remove('on'); $('lockBtn').classList.remove('on'); arrowEls.forEach(e => e.classList.remove('on')); endedAt = tn; A.stop(0.6); setTimeout(finishLevel, 700); running = false; }
       }
       const t = g.done ? g.dur : Math.max(g.lastT, -g.L.lead);
       fx.popups = fx.popups.filter(p => tn - p.t0 < 1);
       rend.play(g, t, tn, fx, { reduce: settings.reduceMotion, arrows: settings.arrows, musicOff: !songAudible(), orbs: settings.orbs });
     } else {
-      if (state !== 'play') { escShow(false); $('lockBtn').classList.remove('on'); for (const e of arrowEls) e.classList.remove('on'); }
+      if (state !== 'play') { escShow(false); $('zapBtn').classList.remove('on'); $('lockBtn').classList.remove('on'); for (const e of arrowEls) e.classList.remove('on'); }
       rend.backdrop(tn, { reduce: settings.reduceMotion, title: state === 'boot' || state === 'video' || state === 'menu' || state === 'settings' || state === 'calib', titleY: state === 'menu' ? rend.V.H * 0.2 : rend.V.H * 0.27 });
     }
     requestAnimationFrame(frame);
@@ -292,7 +315,7 @@
     const sm = R.summary(g); session.results[curIdx] = sm;
     $('resTitle').textContent = 'LEVEL ' + sm.level + ' COMPLETE' + (sm.noLimit ? ' · NO LIMIT' : '');
     const z = $('resZero'); z.textContent = sm.zeroSet ? 'NEW ZERO SET' : 'ZERO NOT SET'; z.className = 'big ' + (sm.zeroSet ? 'zs' : 'nz');
-    $('resKv').innerHTML = kv((sm.orbsOn ? [['ENERGY ORBS', sm.orbsCaught + ' / ' + sm.orbsTotal + (sm.noLimit ? ' (+' + sm.orbPoints + ' pts)' : ' (+' + sm.extraWall + ' s)')]] : []).concat(sm.noLimit ? [['MODE', 'NO LIMIT (' + sm.passes + ' pass' + (sm.passes > 1 ? 'es' : '') + ')']] : []).concat(sm.speed < 1 ? [['GAME SPEED', Math.round(sm.speed * 100) + '% SLOW MODE']] : []).concat([['SCORE', sm.score], ['PERFECT', sm.perfect], ['GOOD', sm.good], ['MISS', sm.miss], ['ACCURACY', Math.round(sm.acc * 100) + '%'], ['MAX COMBO', sm.maxCombo], ['ZERO METER', sm.zonePct + '%'], ['GRID FROZEN', sm.frozen + 'x' + (sm.escapes ? ' (ESC ' + sm.escapes + 'x)' : '')], ...(sm.laserShots ? [['DYSTOPIAN BONUS', '+' + sm.laserBonus + ' (' + sm.laserHits + ' hits / ' + sm.laserShots + ' shots)']] : []), ['AVG TIMING', (sm.avgDeltaMs >= 0 ? '+' : '') + Math.round(sm.avgDeltaMs) + ' ms']]));
+    $('resKv').innerHTML = kv((sm.orbsOn ? [['ENERGY ORBS', sm.orbsCaught + ' / ' + sm.orbsTotal + (sm.orbsClicked ? ' (' + sm.orbsClicked + ' early)' : '') + (sm.noLimit ? ' (+' + sm.orbPoints + ' pts)' : ' (+' + sm.extraWall + ' s)')]] : []).concat(sm.noLimit ? [['MODE', 'NO LIMIT (' + sm.passes + ' pass' + (sm.passes > 1 ? 'es' : '') + ')']] : []).concat(sm.speed < 1 ? [['GAME SPEED', Math.round(sm.speed * 100) + '% SLOW MODE']] : []).concat([['SCORE', sm.score], ['PERFECT', sm.perfect], ['GOOD', sm.good], ['MISS', sm.miss], ['ACCURACY', Math.round(sm.acc * 100) + '%'], ['MAX COMBO', sm.maxCombo], ['ZERO METER', sm.zonePct + '%'], ['GRID FROZEN', sm.frozen + 'x' + (sm.escapes ? ' (ESC ' + sm.escapes + 'x)' : '')], ...(sm.laserShots ? [['DYSTOPIAN BONUS', '+' + sm.laserBonus + ' (' + sm.laserHits + ' hits / ' + sm.laserShots + ' shots)']] : []), (sm.aimPct != null ? ['AIM', sm.aimPct + '%'] : ['AVG TIMING', (sm.avgDeltaMs >= 0 ? '+' : '') + Math.round(sm.avgDeltaMs) + ' ms'])]));
     $('resNote').textContent = sm.zeroSet ? '"I NEVER DOUBTED YOU." (I DID.)' : (sm.frozen ? '"ALIGNED. GRID FROZEN." YOU TRUSTED THE NUMBER.' : '"STAY 1.5-4 DEG OFF AND KEEP THE COMBO."');
     const last = curIdx === R.LEVELS.length - 1;
     $('resNext').textContent = last ? 'FINAL GRADE' : 'NEXT: LEVEL ' + (curIdx + 2);
@@ -476,11 +499,20 @@
     const p = { id: e.pointerId, x: e.clientX, y: e.clientY, t0: e.timeStamp, mode, startX: e.clientX, startP: g.p, moved: 0 };
     ptr.set(e.pointerId, p);
     if (mode === 'tap') {
-      const uppers = vals.filter(q => q.mode === 'tap' || q.mode === 'twist');
-      if (uppers.length === 1 && !hasSlider) {        // two fingers in the play area = twist
-        uppers[0].mode = 'twist'; p.mode = 'twist';
-        twistLast = Math.atan2(p.y - uppers[0].y, p.x - uppers[0].x);
-      } else doTap(e.timeStamp, playPoint(e));       // a tap, even while the other thumb is on the slider
+      const pt = playPoint(e);
+      const tapTime = tapT(e.timeStamp);
+      const orbId = rend.orbAt(g, tapTime, pt.x * rend.V.W, pt.y * rend.V.H);
+      if (orbId != null) {
+        R.clickOrb(g, tapTime, orbId);          // a touch on the orb is never also a letter tap
+        p.mode = 'none';
+        handleEvents(R.drain(g));
+      } else {
+        const uppers = vals.filter(q => q.mode === 'tap' || q.mode === 'twist');
+        if (uppers.length === 1 && !hasSlider) {        // two fingers in the play area = twist
+          uppers[0].mode = 'twist'; p.mode = 'twist';
+          twistLast = Math.atan2(p.y - uppers[0].y, p.x - uppers[0].x);
+        } else doTap(e.timeStamp, pt);       // a tap, even while the other thumb is on the slider
+      }
     }
   });
   canvas.addEventListener('pointermove', e => {
@@ -498,7 +530,7 @@
   });
   function up(e) {
     const p = ptr.get(e.pointerId); if (!p) return;
-    if (p.mode === 'slider' && p.moved < 10 && e.timeStamp - p.t0 < 260) doTap(p.t0, playPoint(e));   // a quick tap on the slider zone is a tap
+    // (v12: a quick tap in the slider zone is no longer a beat tap - you score by touching the ringed letter)
     ptr.delete(e.pointerId);
     const tp = twistPair(); if (tp.length < 2) { tp.forEach(q => { q.mode = 'none'; }); twistLast = null; }
   }
@@ -517,6 +549,7 @@
       else if (e.key === 'p') pauseGame();
       else if (e.key === 'l' || e.key === 'L') doLock();
       else if (e.key === 'f' || e.key === 'F') doFire();
+      else if (e.key === 'z' || e.key === 'Z') doZap();
     } else if (state === 'pause' && (e.key === 'Escape' || e.key === 'p')) resumeGame();
     else if (state === 'boot' && (e.code === 'Space' || e.code === 'Enter')) firstTap();
   });
@@ -539,7 +572,7 @@
   // test / debug hooks (read-only views + a couple of helpers)
   window.__mis = {
     R, A, get g() { return g; }, get state() { return state; }, get settings() { return settings; }, get session() { return session; },
-    levelT, doTap, get fx() { return fx; }, rend,
+    levelT, doTap, markScreen(i) { return g ? rend.markScreen(g, levelT(), i) : null; }, get fx() { return fx; }, rend,
     nextTargetIn() { if (!g) return null; const t = levelT(); for (const tg of g.targets) if (tg.state === 'pending' && tg.T - t > -0.12) return { dt: tg.T - t, i: tg.i, T: tg.T }; return null; },
     doEscape, doLock, doFire, heldArrows, arrowEls, firstTap, endTitle, pauseGame, resumeGame, intro, beginLevel, finishLevel, showFinal, startCredits
   };

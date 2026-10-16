@@ -73,6 +73,14 @@ ok(run(7) === run(7), 'deterministic'); ok(run(7) !== run(8) || true, 'seeds may
   const mk = (sp) => [1, 2, 3].map(l => ({ targets: 40, acc: 0.97, zeroSet: true, frozen: 0, score: 1000, speed: sp }));
   ok(R.grade(mk(1)).grade === 'S', 'S at full speed'); const gc = R.grade(mk(0.85)); ok(gc.grade === 'A' && gc.capped && gc.slow, 'capped at A in slow mode');
   ok(R.grade([{ targets: 40, acc: 0.97, zeroSet: true, frozen: 0, score: 1, speed: 1 }, { targets: 40, acc: 0.97, zeroSet: true, frozen: 0, score: 1, speed: 0.7 }, { targets: 40, acc: 0.97, zeroSet: true, frozen: 0, score: 1, speed: 1 }]).grade === 'A', 'one slow level caps');
+  const row = (acc, zero, extra) => ({ targets: 40, acc, zeroSet: zero, frozen: 0, score: 1, ...extra });
+  const three = R.grade([0.35, 0.35, 0.35].map(a => row(a, true)));
+  ok(three.grade === 'B' && three.zeroSets === 3 && three.quip === 'MOSTLY WRONG, ON PURPOSE.', '3 zero sets under 50% is a B');
+  ok(R.grade([0.6, 0.6, 0.6].map(a => row(a, true))).grade === 'B', '3 zero sets lifts a 60% clear to B');
+  ok(R.grade([0.85, 0.85, 0.85].map(a => row(a, true))).grade === 'A', '3 zero sets at 85% is still A');
+  ok(R.grade([0.97, 0.97, 0.97].map(a => row(a, true, { frozen: 1 }))).grade === 'A', 'a freeze still blocks S');
+  ok(R.grade([row(0.35, true), row(0.35, true), row(0.35, false)]).grade === 'D', 'two zero sets under 50% stay D');
+  ok(R.grade([0.35, 0.35, 0.35].map(a => row(a, true, { noLimit: true }))).grade === 'B', '3 zero sets in practice is B');
 }
 
 // --- TILT LOCK
@@ -190,6 +198,15 @@ ok(run(7) === run(7), 'deterministic'); ok(run(7) !== run(8) || true, 'seeds may
     for (let i = 0; i < 60 * 12 && at == null; i++) { t += 1 / 60; g.twist = 2.8 - R.worldTilt(g, t) - g.jolt; R.update(g, t); g.combo = 5; if (g.zeroSet) at = t - 0.5; }
     ok(at != null && Math.abs(at - 6) < 0.2, 'zero set after ~6 s in the zone (' + at + ')'); }
   { const g = R.startLevel(0, 5); g.combo = 0; g.zone = 3; let t = 3; R.update(g, t); g.twist = 8 - R.worldTilt(g, t) - g.jolt; g.zone = 3; const z0 = g.zone; for (let i = 0; i < 60; i++) { t += 1 / 60; g.twist = 8 - R.worldTilt(g, t) - g.jolt; R.update(g, t); } ok(Math.abs((z0 - g.zone) - 0.15) < 0.04, 'drain 0.15 / s (' + (z0 - g.zone) + ')'); }
+  // once the meter fills, the credit and the bar stay together: no drain, no freeze shave
+  { const g = R.startLevel(0, 5); g.combo = 5; let t = 0.5; R.update(g, t);
+    for (let i = 0; i < 60 * 8 && !g.zeroSet; i++) { t += 1 / 60; g.twist = 2.8 - R.worldTilt(g, t) - g.jolt; R.update(g, t); g.combo = 5; }
+    ok(g.zeroSet && g.zone === g.L.zoneNeed, 'meter is full when the zero sets');
+    for (let i = 0; i < 60 * 5; i++) { t += 1 / 60; g.twist = 8 - R.worldTilt(g, t) - g.jolt; R.update(g, t); g.combo = 0; }
+    ok(g.zeroSet && g.zone === g.L.zoneNeed, 'a finished meter does not drain outside the zone');
+    let n = 0; while (!R.isFrozen(g, t) && n++ < 120) { t += 1 / 60; g.twist = -R.worldTilt(g, t) - g.jolt; R.update(g, t); }
+    ok(R.isFrozen(g, t) && g.zone === g.L.zoneNeed, 'a freeze does not shave a finished meter');
+    const sm = R.summary(g); ok(sm.zeroSet && sm.zonePct === 100, 'result shows the zero set with a full meter'); }
 }
 
 // --- v5: NO TIME LIMIT (practice mode)
@@ -334,7 +351,29 @@ ok(run(7) === run(7), 'deterministic'); ok(run(7) !== run(8) || true, 'seeds may
     const ev = R.drain(g).filter(e => e.type === 'orbcatch'); ok(ev.length === 1 && ev[0].points === 500 && ev[0].extra === 0, 'NO TIME LIMIT: +500 points'); ok(g.score - s0 >= 500 && g.extraWall === 0 && g.endAt === g.dur, 'no time added'); ok(g.orbPoints === 500, 'orb points tallied');
     steer(g, 1, g.dur * 2.2, () => 2.8); ok(g.orbs.some(x => x.pass === 1) && g.orbs.some(x => x.pass === 2), 'orbs keep coming each pass'); const ids = g.orbs.map(x => x.i); ok(new Set(ids).size === ids.length, 'unique orb ids'); }
   // coach: level 1 teaches the orb while it approaches
-  { const g = mk(0, 1), o = g.orbs[0]; ok(R.coachLine(g, o.T - 2) === 'ENERGY ORB! TILT TO CATCH IT: +10s', 'level-1 coach line'); ok(R.coachLine(g, 2) !== 'ENERGY ORB! TILT TO CATCH IT: +10s', 'not before the orb is announced'); }
+  { const g = mk(0, 1), o = g.orbs[0]; ok(R.coachLine(g, o.T - 2) === 'TAP THE ORB IN THE RING: +1000 AND +10s. EARLY TAP: +300.', 'level-1 coach line'); ok(!/TAP THE ORB/.test(R.coachLine(g, 2)), 'not before the orb is announced'); }
+  // click the flying orb: early is +300 and spends it; in the ring is +1000 and the +10 s catch
+  { const g = mk(0, 1), o = g.orbs[0]; const t = o.T - R.ORB_TRAVEL_S * 0.5;
+    ok(R.clickOrb(g, t, o.i), 'early click registers');
+    const ev = R.drain(g).filter(e => e.type === 'orbclick');
+    ok(ev.length === 1 && ev[0].points === R.ORB_CLICK && o.state === 'clicked' && g.extraWall === 0 && g.score >= R.ORB_CLICK, 'early click is +300 and no time');
+    ok(!R.clickOrb(g, t + 0.2, o.i), 'a spent orb cannot be clicked again');
+    R.update(g, o.T + 1); ok(!R.drain(g).some(e => e.type === 'orbmiss' || e.type === 'orbcatch'), 'an early click is not later a miss or a catch'); }
+  { const g = mk(0, 1), o = g.orbs[0]; const t = o.T - R.ORB_TRAVEL_S * (1 - R.ORB_IN_K) + 0.02;
+    ok(R.clickOrb(g, t, o.i), 'in-ring click registers');
+    const ev = R.drain(g).filter(e => e.type === 'orbcatch');
+    ok(ev.length === 1 && ev[0].points === R.ORB_CLICK_BIG && ev[0].extra === 10 && ev[0].click === 'target', 'in-ring click is +1000 and +10 s');
+    ok(o.state === 'caught' && g.orbsCaught === 1 && g.extraWall === 10 && g.combo === R.ORB_ZONE_TAPS, 'in-ring click is a full catch'); }
+  // letter laser: GOOD on the ring that is closing, recharge, a shot with no ring fizzles
+  { const g = R.startLevel(0, 3, 1), tg = g.targets[0];
+    R.update(g, tg.T - 0.2); R.drain(g);
+    const ev = R.shootLetter(g, tg.T - 0.2);
+    ok(ev && ev.type === 'zap' && ev.result === 'hit' && ev.mark === tg.markIdx, 'laser hits the live letter');
+    ok(tg.state === 'good' && g.counts.good === 1 && g.counts.perfect === 0, 'letter laser scores GOOD');
+    ok(R.shootLetter(g, tg.T - 0.2 + 0.05) === null, 'laser is recharging');
+    const g2 = R.startLevel(0, 3, 1); R.update(g2, 0.05); R.drain(g2);
+    const miss = R.shootLetter(g2, 0.05);
+    ok(miss && miss.result === 'miss' && miss.mark === -1 && g2.counts.miss === 0 && g2.counts.stray === 0, 'laser with no ring fizzles'); }
   // orbView: shimmer before launch, flies k 0..1, aligned flag
   { const g = mk(0, 1), o = g.orbs[0]; R.update(g, o.T - 4.2); let v = R.orbView(g, o.T - 4.2).orbs[0]; ok(v.shimmer > 0 && v.shimmer < 1 && !v.flying && v.k === 0, 'faint shimmer before launch');
     R.update(g, o.T - 1.6); v = R.orbView(g, o.T - 1.6).orbs[0]; ok(v.flying && v.k > 0.4 && v.k < 0.6, 'half way (k=' + v.k.toFixed(2) + ')'); }
@@ -386,6 +425,61 @@ ok(run(7) === run(7), 'deterministic'); ok(run(7) !== run(8) || true, 'seeds may
   ok(!!nxt, 'the tangent goes flat again');
   R.tap(slow, nxt.t, { x: nxt.v.x, y: nxt.v.y, yScale: ys });
   ok(Math.abs(slow.immuneUntil - (nxt.t + 42 * 0.7)) < 1e-6, 'a second flat touch restarts the 42s');
+}
+
+// --- TAP THE LETTER (v12): judged by where you touch, not when
+{
+  const far = (n) => new Array(n).fill(Infinity);
+  const marksAt = (g, i, d) => { const m = far(g.L.word.length); m[i] = d; return m; };
+  const judgeOf = (g) => { const e = R.drain(g).filter(x => x.type === 'judge'); return e.length ? e[0] : null; };
+  for (const sp of R.SPEEDS) {
+    const fresh = () => { const h = R.startLevel(0, 5, sp); const T = h.targets[3].T; R.update(h, T - 0.6); R.drain(h); return { h, tg: h.targets[3], T }; };   // the previous ring has expired by then
+    // early in the ring's approach, dead centre on the ringed letter = PERFECT (timing does not matter)
+    { const { h, tg, T } = fresh(); const t = T - 0.55; ok(R.isLive(h, tg, t) && R.isLive(h, tg, T - R.BEAT * R.APPROACH_BEATS * 0.99), 'live as soon as the ring shows at ' + sp);
+      R.tap(h, t, { x: 0.5, y: 0.5, marks: marksAt(h, tg.markIdx, 0.1) }); const e = judgeOf(h);
+      ok(e && e.judge === 'PERFECT' && e.mark === tg.markIdx && tg.state === 'perfect', 'centre tap long before the beat is PERFECT at ' + sp);
+      ok(h.score === 300 && h.combo === 1 && h.off[tg.markIdx] === 0, 'PERFECT scores 300, combo +1, letter snaps home at ' + sp); }
+    // after the ring closed (inside the grace), off-centre but on the letter = GOOD
+    { const { h, tg, T } = fresh(); const t = T + R.TAP_GRACE_S * sp * 0.9;
+      R.tap(h, t, { x: 0.5, y: 0.5, marks: marksAt(h, tg.markIdx, 0.8) }); const e = judgeOf(h);
+      ok(e && e.judge === 'GOOD' && tg.state === 'good' && h.score === 100, 'off-centre tap after the ring closed is GOOD at ' + sp); }
+    // perfect / good edge is a distance, not a time
+    { const { h, tg, T } = fresh(); R.tap(h, T, { marks: marksAt(h, tg.markIdx, R.TAP_PERFECT_R) }); ok(judgeOf(h).judge === 'PERFECT', 'edge of the perfect radius at ' + sp); }
+    { const { h, tg, T } = fresh(); R.tap(h, T, { marks: marksAt(h, tg.markIdx, 1.0) }); ok(judgeOf(h).judge === 'GOOD', 'edge of the touch target is still GOOD at ' + sp); }
+    // MISS by location: just outside the touch target
+    { const { h, tg, T } = fresh(); h.combo = 7; const m0 = h.counts.miss; R.tap(h, T, { marks: marksAt(h, tg.markIdx, 1.05) }); const e = judgeOf(h);
+      ok(e && e.judge === 'MISS' && tg.state === 'miss' && h.combo === 0 && h.counts.miss === m0 + 1, 'tap beside the ringed letter is a MISS at ' + sp); }
+    // MISS by location: dead centre on a letter that has no ring
+    { const { h, tg, T } = fresh(); const other = (tg.markIdx + 1) % h.L.word.length; const s0 = h.score;
+      R.tap(h, T, { marks: marksAt(h, other, 0) }); const e = judgeOf(h);
+      ok(e && e.judge === 'MISS' && e.mark === tg.markIdx && tg.state === 'miss' && h.score === s0, 'tapping a non-target letter is a MISS on the ringed one at ' + sp);
+      ok(h.counts.perfect === 0 && h.counts.good === 0, 'no hit counted for the wrong letter at ' + sp); }
+    // empty sky with a live ring = MISS; with no ring on screen = STRAY (-15)
+    { const { h, tg, T } = fresh(); R.tap(h, T - 0.05, { x: 0.5, y: 0.05, marks: far(h.L.word.length) }); ok(judgeOf(h).judge === 'MISS' && tg.state === 'miss', 'tap on empty sky while a ring is up is a MISS at ' + sp); }
+    { const h = R.startLevel(0, 5, sp); R.update(h, -0.4); R.drain(h); h.score = 100; R.tap(h, -0.3, { marks: far(3) }); const e = judgeOf(h);
+      ok(e && e.judge === 'STRAY' && h.score === 85 && h.counts.miss === 0 && h.counts.stray === 1, 'tap with no ring on screen is STRAY -15 at ' + sp); }
+    // not live yet (ring not visible) -> the touch cannot hit it
+    { const { h, tg, T } = fresh(); const t = T - R.BEAT * R.APPROACH_BEATS - 0.05 * sp; ok(!R.isLive(h, tg, t), 'not live before its ring shows at ' + sp); }
+    // untouched rings still expire as misses after the grace
+    { const { h, tg, T } = fresh(); R.update(h, T + R.TAP_GRACE_S * sp * 0.95); ok(tg.state === 'pending', 'still tappable inside the grace at ' + sp);
+      R.update(h, T + R.TAP_GRACE_S * sp + 0.02); ok(tg.state === 'miss', 'expires as a MISS after the grace at ' + sp); }
+    // the ring stays closed on the letter during the grace (renderer view)
+    { const { h, tg, T } = fresh(); R.update(h, T + 0.2 * sp); const a = R.approaching(h, T + 0.2 * sp).find(v => v.i === tg.i); ok(a && a.k === 1, 'closed ring held on the letter at ' + sp); }
+  }
+  // two live rings: the touched letter wins, not the one that closes first
+  { const g = R.startLevel(1, 4); const a = g.targets.find(x => x.T > 2), b = g.targets[g.targets.indexOf(a) + 1];
+    const t = a.T - 0.02; R.update(g, t); R.drain(g); ok(R.isLive(g, a, t) && R.isLive(g, b, t) && a.markIdx !== b.markIdx, 'two rings on screen');
+    R.tap(g, t, { marks: marksAt(g, b.markIdx, 0.2) }); const e = R.drain(g).filter(x => x.type === 'judge')[0];
+    ok(e.judge === 'PERFECT' && b.state === 'perfect' && a.state === 'pending', 'touching the second ringed letter scores it, the first stays live'); }
+  // a touch on the flat tangent while a ring is up is immunity, not a miss
+  { const g = R.startLevel(0, 9); let t = 0.2, v = null; for (; t < 30; t += 0.005) { v = R.tangentView(g, t); if (v.flat && g.targets.some(x => R.isLive(g, x, t))) break; }
+    if (v && v.flat) { R.update(g, t - 0.01); R.drain(g); R.tap(g, t, { x: v.x, y: v.y, yScale: 1, marks: far(3) }); const ev = R.drain(g);
+      ok(ev.some(e => e.type === 'immune') && !ev.some(e => e.type === 'judge'), 'flat-tangent touch during a ring is not a miss'); } else ok(true, 'no flat+ring overlap for this seed'); }
+  // summary reports aim instead of timing when letters were tapped
+  { const g = R.startLevel(0, 5); const tg = g.targets[3]; R.update(g, tg.T - 0.3); R.tap(g, tg.T - 0.3, { marks: marksAt(g, tg.markIdx, 0.2) });
+    ok(R.summary(g).aimPct === 80, 'AIM 80% for a 0.2 tap'); ok(R.summary(R.startLevel(0, 5)).aimPct === null, 'no aim without letter taps'); }
+  // the keyboard / no-location path still uses the old timing judge
+  { const h = R.startLevel(0, 5); const T = h.targets[3].T; R.update(h, T - 0.5); R.drain(h); R.tap(h, T + 0.01); ok(judgeOf(h).judge === 'PERFECT', 'no-location tap falls back to timing'); }
 }
 
 console.log('rules tests passed:', n);

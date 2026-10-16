@@ -27,7 +27,7 @@ AUTOPLAY_JS = """
         const j = ap.jitter ? (((tg.i * 37) % 11) - 5) / 5 * ap.jitter : 0;
         const skip = ap.skipEvery && tg.i % ap.skipEvery === (ap.skipEvery - 1);
         if (skip) { ap.tapped.add(tg.i); continue; }
-        if (t >= tg.T + j) { ap.tapped.add(tg.i); ap.taps++; ev('pointerdown', 9, 200, L.horizonY - 160); ev('pointerup', 9, 200, L.horizonY - 160); break; }
+        if (t >= tg.T + j) { ap.tapped.add(tg.i); ap.taps++; const r = canvas.getBoundingClientRect(), q = m.markScreen(tg.markIdx), qx = r.left + q.x, qy = r.top + q.y; ev('pointerdown', 9, qx, qy); ev('pointerup', 9, qx, qy); /* v12: touch the ringed letter */ break; }
       }
       // slider via real pointer events
       if (ap.ctrl && t > 0.3) {
@@ -337,8 +337,8 @@ async def lock_test(page, cdp, label, shotname=None):
     # real arrow thumb (CDP) held for ~1 s during the lock: must not change the tilt or the twist
     ar = await rect(page, '#aRD'); ax, ay = center(ar)
     await touch(cdp, 'touchStart', [{'x': ax, 'y': ay, 'id': 6}]); await page.wait_for_timeout(1000); await touch(cdp, 'touchEnd', [])
-    # a second tap on the (now inactive) gauge during the lock does nothing
-    await page.touchscreen.tap(cx, cy)
+    # (2026-10-16: removed the old 'second tap does nothing' step - since the Oct 10 build a second tap on the marker RELEASES the lock
+    #  by design (README: 'Tap the same marker again to let go early'), which made this 8 s check fail. Unrelated to tap-the-letter.)
     res = await watch
     out.update(res)
     out['relock_during_lock_ignored'] = res['lock_wall_s'] < 8.25
@@ -373,7 +373,7 @@ async def slow_flow(p, browser, s, full=True):
         await tap_btn(page, '#setSpeed'); labels.append(await js(page, "document.getElementById('setSpeed').textContent"))       # for 100%: a full 100 -> 85 -> 70 -> 100 cycle
     R_['speed_button_labels'] = labels
     assert abs(await js(page, "__mis.settings.speed") - s) < 1e-9, labels
-    if s < 1: assert 'SLOW MODE' in labels[-1], labels
+    if s < 1: assert 'SLOW' in labels[-1], labels      # 2026-10-16: label is now 'SLOW, MUSIC MUTED' (Oct 10 build), was 'SLOW MODE'
     await page.wait_for_timeout(300)
     if s == 0.85: await shot(page, '28-settings-speed.png')
     stored = await js(page, "JSON.parse(localStorage.getItem('misaligned.settings.v1')).speed")
@@ -484,7 +484,7 @@ async def music_flow(p, browser, s):
             await tap_btn(page, '#setSpeed')
     await tap_btn(page, '#setMusic'); await page.wait_for_timeout(300)
     lab = await js(page, "[document.getElementById('setMusic').textContent, document.getElementById('setSfx').textContent, document.getElementById('setTick').textContent]")
-    R_['labels'] = lab; assert lab[0] == 'MUSIC: OFF' and lab[1] == 'SFX: ON' and lab[2] == 'BEAT TICK: OFF', lab
+    R_['labels'] = lab; assert lab[0].startswith('MUSIC: OFF') and lab[1] == 'SFX: ON' and lab[2] == 'BEAT TICK: OFF', lab
     if s == 1.0: await shot(page, '32-music-off-settings.png')
     st = await js(page, "JSON.parse(localStorage.getItem('misaligned.settings.v1'))"); R_['persisted'] = st
     assert st['music'] is False and st['sfx'] is True and st['tick'] is False, st
@@ -521,7 +521,7 @@ async def music_flow(p, browser, s):
     # HUD note button turns the music back on (touch), music audible again, then the pause-screen button turns it off again
     await page.touchscreen.tap(*center(nb)); await page.wait_for_timeout(500)
     assert await js(page, "__mis.settings.music") is True
-    rms_on = await js(page, RMS_JS, 2500); R_['rms_music_on'] = rms_on; assert rms_on['median'] > max(0.01, 5 * rms_off['median']), (rms_on, rms_off)
+    rms_on = await js(page, RMS_JS, 2500); R_['rms_music_on'] = rms_on; assert s < 1 or rms_on['median'] > max(0.01, 5 * rms_off['median']), (rms_on, rms_off)   # 2026-10-16: slow mode keeps the song muted for the level by design (Oct 10 build)
     await js(page, "__mis.pauseGame()"); await page.wait_for_timeout(500)
     pm = await rect(page, '#pMusic'); R_['pause_button'] = await js(page, "document.getElementById('pMusic').textContent"); assert pm['on'] and pm['height'] >= 44
     if s == 1.0: await shot(page, '37-pause-music.png')
@@ -980,8 +980,9 @@ async def main():
         REPORT['keyboard_tilt'] = dict(down_deg=round(k1 - k0, 2), up_deg=round(k2 - k1, 2))
         assert k1 > k0 and k2 < k1, REPORT['keyboard_tilt']
         await js(page, "window.__ap.on=false; window.__ap.down=false; window.__ap.tapped=new Set()")
-        await js(page, "__mis.g.twist = -__mis.R.worldTilt(__mis.g, __mis.g.lastT) - __mis.g.jolt")      # park at exactly 0 deg -> lock
-        await page.wait_for_function("__mis.R.isFrozen(__mis.g, __mis.g.lastT)", timeout=5000)
+        await js(page, "__mis.g.immuneUntil = -1; __mis.g.twist = -__mis.R.worldTilt(__mis.g, __mis.g.lastT) - __mis.g.jolt")      # park at exactly 0 deg -> lock (v12: clear any flat-tangent immunity the letter taps picked up)
+        # keep it parked every frame (expiring rings shove the grid, the world tilt keeps moving) until the freeze triggers
+        await page.wait_for_function("(() => { const m = __mis, g = m.g; if (!m.R.isFrozen(g, g.lastT)) { g.immuneUntil = -1; g.twist = -m.R.worldTilt(g, g.lastT) - g.jolt; } return m.R.isFrozen(g, g.lastT); })()", timeout=5000, polling='raf')
         sh0 = await js(page, "__mis.g.laserShots"); await page.keyboard.press('f'); await page.wait_for_timeout(100)
         REPORT['keyboard_fire'] = dict(shots_before=sh0, shots_after=await js(page, "__mis.g.laserShots")); assert REPORT['keyboard_fire']['shots_after'] == sh0 + 1, REPORT['keyboard_fire']
         await page.keyboard.press('Escape'); await page.wait_for_timeout(150)

@@ -243,6 +243,26 @@
       return { n, spacing, size, y, x0, cell: spacing * 0.26 };
     }
 
+    /** TAP THE LETTER: centre of letter i in canvas CSS px, rotated with the grid exactly like play() draws it. */
+    function markScreen(g, t, i) {
+      const M = markLayout(g), a = R.tilt(g, t) * Math.PI / 180, cx = V.W / 2, cy = L.horizonY;
+      const x = M.x0 + i * M.spacing + g.off[i] * M.cell - cx, y = M.y - cy;
+      return { x: cx + x * Math.cos(a) - y * Math.sin(a), y: cy + x * Math.sin(a) + y * Math.cos(a) };
+    }
+    /** Normalized distance of a touch (canvas CSS px) to every letter: 0 = centre, 1 = edge of its touch target.
+     *  Touch targets are generous: at least 60 px wide and 88 px tall, wider than the letter where there is room. */
+    function markHits(g, t, px, py) {
+      const M = markLayout(g), a = -R.tilt(g, t) * Math.PI / 180, cx = V.W / 2, cy = L.horizonY;
+      const dx0 = px - cx, dy0 = py - cy;                                  // undo the grid rotation around the horizon centre
+      const lx = cx + dx0 * Math.cos(a) - dy0 * Math.sin(a), ly = cy + dx0 * Math.sin(a) + dy0 * Math.cos(a);
+      const rx = Math.max(M.spacing * 0.6, 30), ry = Math.max(M.size * 0.95, 44), out = [];
+      for (let i = 0; i < M.n; i++) {
+        const x = M.x0 + i * M.spacing + g.off[i] * M.cell;
+        out.push(Math.hypot((lx - x) / rx, (ly - M.y) / ry));
+      }
+      return out;
+    }
+
     // A tangent to a small hill, floating in canvas fractions. Flat (gradient 0) is drawn lime.
     function tangentLayer(g, t, now, opt) {
       const v = R.tangentView(g, t);
@@ -338,6 +358,7 @@
       if (fx.laserFlash > now) { c.fillStyle = 'rgba(214,255,116,' + (opt.reduce ? 0.08 : 0.16 * ((fx.laserFlash - now) / 0.12)) + ')'; c.fillRect(0, 0, V.W, V.H); }
       hud(g, t, now, fx, opt, M);
       if (opt.orbs && g.orbsOn) orbLayer(g, t, now, fx, opt, frozen);
+      letterBeams(g, now, fx, opt);
       if (shook) c.restore();
       post(now, 0);
       // banners & frozen text are drawn after post so scanlines do not fade them
@@ -393,6 +414,24 @@
       gaugeAndSlider(g, t, now, opt);
     }
 
+    // ZAP beam from the letter-laser button to the ringed letter (screen space, already un-rotated).
+    function letterBeams(g, now, fx, opt) {
+      if (!fx.letterBeams || !fx.letterBeams.length) return;
+      const x0 = V.W / 2, y0 = L.escBottom - 32;
+      c.save();
+      for (const b of fx.letterBeams) {
+        const age = now - b.t0; if (age > 0.28) continue;
+        const ext = clamp(age / 0.05, 0, 1), a = clamp(1 - Math.max(0, age - 0.08) / 0.2, 0, 1);
+        const tx = b.x, ty = b.y, ex = x0 + (tx - x0) * ext, ey = y0 + (ty - y0) * ext;
+        const col = b.hit ? '214,255,116' : '255,124,233';
+        c.lineCap = 'round';
+        if (!opt.reduce) { c.strokeStyle = 'rgba(' + col + ',' + 0.28 * a + ')'; c.lineWidth = 14; c.beginPath(); c.moveTo(x0, y0); c.lineTo(ex, ey); c.stroke(); }
+        c.strokeStyle = 'rgba(' + col + ',' + 0.95 * a + ')'; c.lineWidth = opt.reduce ? 3 : 5; c.beginPath(); c.moveTo(x0, y0); c.lineTo(ex, ey); c.stroke();
+        c.strokeStyle = 'rgba(255,255,255,' + a + ')'; c.lineWidth = 2; c.beginPath(); c.moveTo(x0, y0); c.lineTo(ex, ey); c.stroke();
+      }
+      c.restore();
+    }
+
     // ---- ENERGY ORBS: lanes + orbs flying from the horizon to the catch line; the catcher bracket's x IS the current tilt (deg * px-per-degree).
     // Align the bracket with the orb's landing ring when the orb arrives. Lime/gold energy look, distinct from the magenta/cyan laser nodes.
     function orbLayer(g, t, now, fx, opt, frozen) {
@@ -425,7 +464,9 @@
         const gr = c.createRadialGradient(x, y, 0, x, y, r * 2.4); gr.addColorStop(0, 'rgba(255,250,200,0.95)'); gr.addColorStop(0.35, 'rgba(255,226,122,0.55)'); gr.addColorStop(1, 'rgba(255,200,60,0)');
         c.fillStyle = gr; c.beginPath(); c.arc(x, y, r * 2.4, 0, TAU); c.fill();
         c.fillStyle = '#ffffff'; c.beginPath(); c.arc(x, y, r * 0.55, 0, TAU); c.fill();
-        c.strokeStyle = o.aligned ? '#d6ff74' : '#ffe27a'; c.lineWidth = 2.5; c.beginPath(); c.arc(x, y, r, 0, TAU); c.stroke();
+        const inRing = o.state === 'pending' && o.k >= R.ORB_IN_K;
+        c.strokeStyle = inRing ? '#d6ff74' : (o.aligned ? '#d6ff74' : '#ffe27a'); c.lineWidth = inRing ? 4 : 2.5; c.beginPath(); c.arc(x, y, r, 0, TAU); c.stroke();
+        if (inRing) textShadowed('TAP', x, y - r - 6, '900 ' + Math.round(13 * k) + 'px ' + FONT_D, '#d6ff74', 'center', '#d6ff74');
         c.save(); c.translate(x, y); c.rotate(opt.reduce ? 0 : now * 1.7); c.strokeStyle = 'rgba(255,255,255,0.8)'; c.lineWidth = 1.5;          // 4-point star flare
         c.beginPath(); c.moveTo(-r * 1.5, 0); c.lineTo(r * 1.5, 0); c.moveTo(0, -r * 1.5); c.lineTo(0, r * 1.5); c.stroke(); c.restore();
         c.globalAlpha = 1;
@@ -533,7 +574,7 @@
       textShadowed('TILT ' + lab, x0, gy + gh + 17 * k, f, g.inZone ? '#9dffb3' : '#e7b6ff');
       textShadowed(frz ? 'GRID FROZEN' : (li.state === 'locked' ? 'TAP AGAIN ' + li.left.toFixed(1) + 's' : (li.state === 'cooldown' ? 'LOCK RECHARGING' : (g.inZone ? 'NEAR-MISS ZONE' : 'RED = FREEZE  GREEN = ZERO'))), x1, gy + gh + 17 * k, MONO_B + Math.round(10 * k + 1) + 'px ' + FONT_M, li.state === 'locked' ? '#9afcff' : (g.inZone ? '#9dffb3' : '#8d7aaa'), 'right');
       // zero meter
-      const zy = gy + gh + 26 * k, zw = w, zk = clamp(g.zone / g.L.zoneNeed, 0, 1);
+      const zy = gy + gh + 26 * k, zw = w, zk = g.zeroSet ? 1 : clamp(g.zone / g.L.zoneNeed, 0, 1);
       c.fillStyle = 'rgba(20,8,50,0.9)'; c.fillRect(x0, zy, zw, 8);
       const zg = c.createLinearGradient(x0, 0, x1, 0); zg.addColorStop(0, '#30e0ff'); zg.addColorStop(1, '#ff3fd6');
       c.fillStyle = g.zeroSet ? '#d6ff74' : zg; c.fillRect(x0, zy, zw * zk, 8);
@@ -585,7 +626,22 @@
       }
     }
 
-    return { V, L, resize, backdrop, play, titleWord, chromeLetter, markLayout, readInsets };
+    /** Screen position of a flying orb, matching orbLayer. px/py are canvas CSS pixels. */
+    function orbAt(g, t, px, py) {
+      const ov = R.orbView(g, t); if (!ov) return null;
+      const ks = clamp(V.k, 0.8, 1.1), cx = V.W / 2, hy = L.horizonY, yc = L.orbY, ppd = L.orbPPD;
+      let best = null, bd = Infinity;
+      for (const o of ov.orbs) {
+        if (o.state !== 'pending' || !o.flying) continue;
+        const lx = cx + clamp(o.theta, -13, 13) * ppd, q = o.k * o.k;
+        const x = cx + (lx - cx) * q, y = hy + (yc - hy) * q;
+        const r = Math.max(44, (4 + 17 * q) * ks * 2.4);
+        const d = Math.hypot(px - x, py - y);
+        if (d <= r && d < bd) { bd = d; best = o.i; }
+      }
+      return best;
+    }
+    return { V, L, resize, backdrop, play, titleWord, chromeLetter, markLayout, markScreen, markHits, orbAt, readInsets };
   }
 
   root.Renderer = { create };

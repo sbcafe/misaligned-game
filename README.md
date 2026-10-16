@@ -18,27 +18,25 @@ Smartbean, MISALIGNED, and the Cafe name are not licensed for use on other produ
 
 Bug reports are welcome as GitHub issues. This prototype is not taking pull requests.
 
-## Play
-https://sbcafe.github.io/misaligned-game/
-
-## Run it locally
+## Run it
+From this folder (`mobile/` in the workspace, the repository root on GitHub):
 ```
-python3 -m http.server 8765
-# open http://127.0.0.1:8765/
+python3 -m http.server 8765        # any static server works
+# open http://127.0.0.1:8765/  locally, or http://<this-machine-ip>:8765/ on a phone on the same Wi-Fi
 ```
-Opening `index.html` straight from disk (file://) also works
+The public copy is at https://sbcafe.github.io/misaligned-game/. Opening `index.html` straight from disk (file://) also works
 for everything except decoding the music with WebAudio (browsers block `fetch` of local files); the game then falls back
 to a plain `<audio>` element automatically.
 Debug: `?novideo=1` skips the title video.
-Cache busting: `index.html` loads the scripts as `js/*.js?v=11` - bump the number when you change JS so phones do not keep the old files.
+Cache busting: `index.html` loads the scripts as `js/*.js?v=15` - bump the number when you change JS so phones do not keep the old files.
 
 ## How to play (this is also the in-game tutorial)
 | | |
 |---|---|
-| 1 TAP | Rings close on a letter. **Tap anywhere** on the beat (the targets are the real kicks of the track). PERFECT +-75 ms, GOOD +-145 ms; 145-245 ms is EARLY/LATE (a miss); a tap that matches nothing costs 15 points. PERFECT snaps the letter home, GOOD snaps 65%, a miss makes the letter drift further and **shoves the grid** (+-1.8 deg). |
-| 2 TWIST | The whole grid + horizon is tilted. **Drag the big slider** at the bottom (it works 1:1 with your finger; it can be dragged from anywhere in the bottom zone), **hold the arrow buttons** (see below) or **twist two fingers** in the play area. The gauge above the slider shows the *real* tilt. A quick tap in the slider zone also counts as a beat tap, so you can tap with the other thumb while sliding. |
+| 1 TAP THE LETTER | A ring appears around a letter and closes on it. **Touch that letter** any time its ring is on screen (from when it appears until 0.35 s after it closes), or press **ZAP** (bottom centre, or the Z key) to shoot a laser at that letter. **No timing needed: where you touch decides the score, not when.** Dead centre (inner half of the letter's touch target) is PERFECT and snaps the letter home; anywhere else on the letter is GOOD (snaps 65%). The laser scores GOOD (it hits the letter, not the dead centre) and recharges in 0.22 s. Touching the **wrong spot** (beside the letter, empty sky, or a letter with no ring) while a ring is up is a MISS: the letter drifts further and the grid is **shoved** (+-1.8 deg). A ring nobody touches is a MISS when it runs out. A touch with no ring on screen costs 15 points. A laser with no ring fizzles and costs nothing. Touch targets are generous: at least 60 x 88 px around each letter (wider where the word is short). Mouse clicks work the same on desktop. |
+| 2 TWIST | The whole grid + horizon is tilted. **Drag the big slider** at the bottom (it works 1:1 with your finger; it can be dragged from anywhere in the bottom zone), **hold the arrow buttons** (see below) or **twist two fingers** in the play area. The gauge above the slider shows the *real* tilt. Taps in the slider zone only move the slider (since v12 they are not letter taps). |
 | 3 THE AI LIES | "AI // ALIGNMENT CHECK" shows a % that is deliberately unreliable (flattering, jittery, random false 100.0% blips). Park the grid within 0.6 deg for 0.4 s and the check says 100% -> **ALIGNED. GRID FROZEN.** (3 s lockout, combo reset, zero meter -20%). **Frozen? Tap the floating ESC button** to end the lock-out early (-50 points). |
-| 4 THE REAL WIN | Stay **1.5-4 deg off** (green on the gauge) and **keep your combo** (>= 3) to fill the ZERO METER -> **NEW ZERO SET** (+1000). |
+| 4 THE REAL WIN | Stay **1.5-4 deg off** (green on the gauge) and **keep your combo** (>= 3) to fill the ZERO METER -> **NEW ZERO SET** (+1000). Once it fills, the bar stays full: it no longer drains, and a freeze does not shave it. |
 
 Levels (each ~38.7 s = 20 bars of the track; the three levels together are the whole 1:56 song):
 
@@ -48,9 +46,11 @@ Levels (each ~38.7 s = 20 bars of the track; the three levels together are the w
 | 2 THE % FLIPS | 21-40 (chorus, breakdown, build) | 55 (every beat; 1 per bar in the kick-less breakdown) | medium | in two windows the narrator's % **flips**: 100% means far, 0% means frozen |
 | 3 THE GRID INVERTS | 41-60 (final chorus, bridge, peak, outro) | 48 real kicks incl. syncopated pick-ups | fast | the grid turns **upside down** and the slider is **reversed** (bars 7-13), then the % flips again |
 
-Score: PERFECT 300, GOOD 100, x(1 + floor(combo/10)) up to x4, +40/s in the near-miss zone, +1000 for a Zero Set.
-Grade S-D from accuracy and Zero Sets (S needs all three, >= 92% accuracy and never frozen). Result screen per level,
+Score: PERFECT 300 (centre of the letter), GOOD 100 (rest of the letter), x(1 + floor(combo/10)) up to x4, +40/s in the near-miss zone, +1000 for a Zero Set.
+Grade S-D from accuracy and Zero Sets. Three zero sets is at least a B, at any accuracy. A still needs >= 80% and two zero sets; S needs all three, >= 92% and never frozen. With fewer than three zero sets: C at >= 50%, B at >= 65% with one zero set, D under 50%. Result screen per level,
 final grade, credits (scrolling list over the title card's final frame), restart / play again everywhere.
+
+**Since v12 (2026-10-16) scoring is tap-the-letter (location), not timing.** Keyboard Space/Enter/J still use the old timing judge as a desktop fallback (a key has no location); the timing windows, latency offset and Calibrate below only apply to that fallback. The result screen shows **AIM** (how close to the letter centres you tapped) instead of AVG TIMING.
 
 **START goes straight into level 1.** The rules are taught in-game by the level-1 coach lines (tilt, tap, the lie, the real win, ESC); **HOW TO PLAY** is a separate, optional menu item (its button starts level 1 too).
 
@@ -106,9 +106,10 @@ Grade thresholds are **unchanged** (S: 92% accuracy, 3 zero sets, no freezes; A:
 
 ## ENERGY ORBS (v6: earn +10 s by steering the tilt)
 Settings -> **ENERGY ORBS: ON / OFF** (default ON, saved). A **TIME m:ss** readout in the HUD shows the level clock (wall-clock seconds left; not shown in NO TIME LIMIT).
-* **Mechanic (one thumb)**: a glowing lime/gold orb with a star flare flies from the horizon down a dashed **lane** to a **landing ring** on the catch line just above the tilt gauge. The lane's bottom position encodes a **tilt angle** (`theta`); a **catcher bracket** `[ ]` on the same line slides left/right with your **current tilt** (`x = centre + tilt * px-per-degree`, 9-14 px per degree). Slide/arrows/twist/tilt-lock the grid until the bracket sits on the landing ring when the orb arrives; the bracket glows lime and says **LOCK ON**. Rules: caught when `|tilt - theta| <= 1.5 deg` at any moment of the arrival window **+-0.2 s (wall-clock)**. No tapping, never a beat tap, nothing is consumed.
+* **Mechanic (one thumb)**: a glowing lime/gold orb with a star flare flies from the horizon down a dashed **lane** to a **landing ring** on the catch line just above the tilt gauge. The lane's bottom position encodes a **tilt angle** (`theta`); a **catcher bracket** `[ ]` on the same line slides left/right with your **current tilt** (`x = centre + tilt * px-per-degree`, 9-14 px per degree). Slide/arrows/twist/tilt-lock the grid until the bracket sits on the landing ring when the orb arrives; the bracket glows lime and says **LOCK ON**. Rules: caught when `|tilt - theta| <= 1.5 deg` at any moment of the arrival window **+-0.2 s (wall-clock)**.
+* **Click the orb**: the sprite is a target. Tap it while it is **in the ring** (the last 15% of the flight, the orb reads TAP) for a **big bonus: +1000 points and the +10 s catch** (combo +3 and the meter jump too). Tap it **anywhere else** on the way down for a **regular bonus: +300 points**, and that spends the orb (no extra time). A touch on the orb is never also a letter tap. Letting it fly past still costs nothing. Tilt-to-catch still works if you do not tap it.
 * **Tension with the near-miss zone**: orb 0 of every level needs an angle **inside** the green zone (2.1-3.4 deg either side), orb 1 an angle **outside** it (7-10 deg, so the zero meter pauses/drains while you go for it), orb 2 either. Angles are never within 2.1 deg of 0 (that would freeze you; and a frozen grid has tilt 0, so an orb that arrives during a freeze is simply missed). **Tilt lock** is the clean way: park on theta, tap the marker, and the 8 s lock holds the catch.
-* **Spawn plan** (seeded, deterministic, `Rules.buildOrbs`): level 1 has **2 orbs** (arrive at ~34% and ~74% of the level +-1 s), levels 2 and 3 have **3** (25 / 50 / 75%). Each is announced by a faint pulsing shimmer on the horizon for 1.5 s, flies for 3.2 s (wall-clock; x speed in song time), stays visible as a fading orb for 0.7 s if missed. Level 1's coach says "ENERGY ORB! TILT TO CATCH IT: +10s" while the first one approaches.
+* **Spawn plan** (seeded, deterministic, `Rules.buildOrbs`): level 1 has **2 orbs** (arrive at ~34% and ~74% of the level +-1 s), levels 2 and 3 have **3** (25 / 50 / 75%). Each is announced by a faint pulsing shimmer on the horizon for 1.5 s, flies for 3.2 s (wall-clock; x speed in song time), stays visible as a fading orb for 0.7 s if missed. Level 1's coach says "TAP THE ORB IN THE RING: +1000 AND +10s. EARLY TAP: +300." while the first one approaches.
 * **Reward**: **+10 s of level time, wall-clock** (also in slow mode: stored as `10 x speed` song seconds), **max +30 s per level** (a capped catch gives the remainder, e.g. +5 s, then +0 "MAX TIME"). The catch also counts as **three taps**: combo +3, and the zero meter jumps by three level-1 kick spacings (`3 × 2 beats` ≈ 2.9 s of the meter) immediately, even outside the green. That bump can finish a NEW ZERO SET. Feedback: lime burst + floating `+10s` and `ZERO +3` at the catcher, the HUD timer flashes lime (static lime in reduced motion), a three-note chime (`GameAudio.chime`, SFX gain, so SFX OFF mutes it), a 14 ms haptic. **Missing costs nothing** (a grey `ORB LOST`, no score / combo / zero-meter / grid effect).
 * **Music and level length**: a standard level is tied to track bars, so extension works by **looping the level's bars**. With orbs enabled a standard level's audio always runs on the loop chain from NO TIME LIMIT (section = the level's first bar to its last bar, 6 ms crossfade, clock = unwrapped audio clock), so nothing has to be re-scheduled when an orb is caught. Without a catch the level still ends at its normal last bar. With a catch the clock is `dur + extra`: when the original end passes, the bars simply loop, the target generator continues (pass 1 of the same seeded plan), flips/inverts repeat, and the level ends at `dur + extra` exactly (it can end mid-bar; the music fades out over 0.6 s). No new orbs spawn in the extended part. Accuracy for an extended level is computed over the targets actually judged. With ENERGY ORBS OFF the old single-source audio path is used and the level is exactly as before.
 * **NO TIME LIMIT**: orbs still appear (a set per pass) but are worth **+500 points** each (tallied as ORB points), never time.
@@ -169,7 +170,7 @@ assets/stomp-signal.mp3   the title track Misaligned, 160 kbps stereo (2.3 MB). 
 assets/title.mp4 / .webm  the 10 s title video (720p H.264+AAC 2.3 MB; 540p VP9+Opus fallback 1.0 MB)
 assets/poster.jpg     poster + credits frame (the video's last frame)
 assets/*.woff2        Orbitron 900/700 and Space Mono 400/700, subsetted (SIL OFL, see OFL-*.txt)
-tests/rules.test.js   node tests for the pure rules (determinism, ESC, arrows, inverted reversal, speed windows, tilt lock): `node tests/rules.test.js`
+tests/rules.test.js   node tests for the pure rules (determinism, ESC, arrows, inverted reversal, speed windows, tilt lock, tap-the-letter hit/miss by location): `node tests/rules.test.js`
 tests/e2e.py          Playwright end-to-end run (iPhone 13 + Pixel 7 touch emulation, landscape, desktop, reduced motion) that produces screenshots/
 screenshots/          01-start.png ... 44-orb-caught.png (43 energy orb approaching with the catcher, 44 orb caught: +10s, 38 no-limit gameplay, 39 NEW ZERO SET offer, 40 menu with PRACTICE, 41 pause with EXIT PRACTICE, 42 no-limit result, 24 arrows, 25 ESC while frozen, 26 gameplay right after START, 28 settings speed, 29 slow play, 30 tilt lock, 31 laser while frozen, 32 music-off settings, 34 tilt lock at 85%, 35 pause speed, 36 HUD with music off, 37 pause music), _e2e-report.json
 ```
